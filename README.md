@@ -8,9 +8,22 @@ firmware that ports it to the device.
 ```
 signal-internet-radio/
 ├── prototype/004-signal/       # the approved high-fidelity prototype (the design spec)
+│   ├── index.html / fonts.css  # self-contained, opens offline via file://
+│   └── screenshots/            # 2× reference renders of every screen
 ├── firmware/ESP32S3_WEB_RADIO/ # the device firmware (Arduino sketch)
 └── tools/flash_device.py       # one-command build-output flasher (no BOOT drill)
 ```
+
+---
+
+## Screens
+
+| | | |
+|---|---|---|
+| <img src="prototype/004-signal/screenshots/01-now-playing.png" width="280" alt="Now playing"> | <img src="prototype/004-signal/screenshots/02-stations.png" width="280" alt="Stations"> | <img src="prototype/004-signal/screenshots/03-settings.png" width="280" alt="Settings"> |
+| Now playing | Stations | Settings |
+| <img src="prototype/004-signal/screenshots/04-wifi.png" width="280" alt="Wi-Fi"> | <img src="prototype/004-signal/screenshots/05-wifi-password.png" width="280" alt="Password entry"> | <img src="prototype/004-signal/screenshots/06-standby.png" width="280" alt="Standby"> |
+| Wi-Fi | Password + keyboard | Standby |
 
 ---
 
