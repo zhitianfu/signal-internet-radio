@@ -1,0 +1,15 @@
+# build outputs
+*.bin
+*.elf
+*.map
+*.hex
+
+# python
+__pycache__/
+*.pyc
+
+# editors / OS
+.DS_Store
+*.swp
+.vscode/
+.idea/

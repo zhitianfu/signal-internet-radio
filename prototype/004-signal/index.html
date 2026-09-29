@@ -1,0 +1,1894 @@
+<!doctype html>
+<html lang="en" data-theme="onair">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>SIGNAL — Internet Radio · ESP32-S3-Touch-AMOLED-1.75C prototype</title>
+<link rel="stylesheet" href="fonts.css">
+<style>
+/* ============================================================
+   SIGNAL — Internet Radio, Concept D
+   High-fidelity prototype for the Waveshare ESP32-S3-Touch-
+   AMOLED-1.75C: 466 x 466 round AMOLED, CST9217 touch.
+   ============================================================ */
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+:root {
+  --accent:  #FFB020;            /* dial / levels / tuning */
+  --live:    #FF3B30;            /* ON AIR tally */
+  --live-soft: rgba(255,59,48,.13);
+  --live-line: rgba(255,59,48,.48);
+  --ink:  #F4F2ED;
+  --ink2: #96938B;
+  --surf: #141417;
+  --line: rgba(255,255,255,.09);
+  --fdisp: 'Archivo', 'Helvetica Neue', Arial, sans-serif;
+  --fmono: 'IBM Plex Mono', ui-monospace, Menlo, monospace;
+  --fserif:'Newsreader', Georgia, serif;
+  --bright: 1;
+}
+html[data-theme="terminal"] {
+  --accent: #FFD23C; --live: #FFD23C;
+  --live-soft: rgba(255,210,60,.12); --live-line: rgba(255,210,60,.45);
+}
+html[data-theme="broadsheet"] {
+  --accent: #F0EEE8; --live: #E10600;
+  --live-soft: rgba(225,6,0,.16); --live-line: rgba(225,6,0,.55);
+}
+
+html, body { background: #08080A; }
+body {
+  font-family: var(--fdisp);
+  color: var(--ink);
+  min-height: 100vh;
+  background:
+    radial-gradient(1100px 700px at 32% 0%, #141419 0%, #0b0b0e 55%, #070709 100%);
+  -webkit-font-smoothing: antialiased;
+}
+
+/* ---------- page chrome ---------- */
+.head {
+  display: flex; align-items: baseline; gap: 18px; flex-wrap: wrap;
+  padding: 26px 34px 0;
+}
+.brand {
+  font-weight: 800; font-size: 21px; letter-spacing: .30em;
+}
+.brand em { font-style: normal; color: var(--accent); }
+.head .meta {
+  font-family: var(--fmono); font-size: 10.5px; letter-spacing: .14em;
+  color: var(--ink2); text-transform: uppercase;
+}
+.head a {
+  font-family: var(--fmono); font-size: 10.5px; letter-spacing: .12em;
+  color: var(--ink2); text-decoration: none; border-bottom: 1px solid transparent;
+}
+.head a:hover { color: var(--ink); border-color: var(--line); }
+
+.stage {
+  display: flex; justify-content: center; align-items: flex-start;
+  gap: 56px; padding: 26px 34px 40px; flex-wrap: wrap;
+}
+.devcol { display: flex; flex-direction: column; align-items: center; }
+.fit { position: relative; }
+.device {
+  position: relative; width: 512px; height: 512px;
+  transform-origin: top left; user-select: none; -webkit-user-select: none;
+}
+
+/* ---------- device ---------- */
+.case {
+  position: absolute; inset: 0; border-radius: 50%; padding: 23px;
+  background: conic-gradient(from 205deg,
+      #565a61 0deg, #1c1e20 48deg, #9398a0 100deg, #33363a 158deg,
+      #17181a 215deg, #6a6f77 275deg, #2b2d31 330deg, #565a61 360deg);
+  box-shadow:
+    0 34px 70px rgba(0,0,0,.62),
+    0 6px 18px rgba(0,0,0,.5),
+    inset 0 0 0 1px rgba(255,255,255,.07);
+}
+.case::after {   /* anodized specular */
+  content: ""; position: absolute; inset: 0; border-radius: 50%; pointer-events: none;
+  background: linear-gradient(158deg, rgba(255,255,255,.15), transparent 32%,
+              transparent 64%, rgba(255,255,255,.05) 88%, transparent);
+}
+.lanyard {
+  position: absolute; top: 7px; left: 50%; transform: translateX(-50%);
+  width: 30px; height: 7px; border-radius: 4px;
+  background: #0a0a0c; box-shadow: inset 0 1px 2px #000, 0 1px 0 rgba(255,255,255,.10);
+}
+.bezel {
+  width: 100%; height: 100%; border-radius: 50%; background: #000;
+  box-shadow: inset 0 0 0 3px #050506, inset 0 0 16px rgba(0,0,0,.9),
+              0 0 0 1.5px rgba(255,255,255,.10);
+  display: grid; place-items: center;
+}
+.side {
+  position: absolute; top: 50%; width: 7px; height: 52px; padding: 0; border: 0;
+  transform: translateY(-50%); border-radius: 4px; cursor: pointer;
+  background: linear-gradient(90deg, #8a8f96, #34373b 55%, #1f2124);
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.4), inset 0 -1px 0 rgba(0,0,0,.55),
+              0 2px 5px rgba(0,0,0,.55);
+}
+.side.pwr { right: -5px; }
+.side.boot { left: -5px; height: 38px;
+  background: linear-gradient(270deg, #74787e, #303236 55%, #232528); }
+.side:hover { filter: brightness(1.35); }
+.side:active { filter: brightness(.8); }
+
+.cap {
+  margin-top: 26px; max-width: 560px; text-align: center;
+  font-family: var(--fmono); font-size: 10.5px; line-height: 1.8;
+  letter-spacing: .10em; color: var(--ink2); text-transform: uppercase;
+}
+.cap b { color: var(--ink); font-weight: 500; }
+
+/* ---------- review panel (scaffolding, not part of the device) ---------- */
+.panel {
+  width: 236px; border: 1px solid var(--line); border-radius: 14px;
+  padding: 18px 16px 16px; background: rgba(255,255,255,.022);
+  margin-top: 8px;
+}
+.p-title {
+  font-family: var(--fmono); font-size: 9.5px; letter-spacing: .30em;
+  color: var(--ink2); margin-bottom: 14px;
+}
+.p-group { margin-bottom: 15px; }
+.p-group label {
+  display: block; font-family: var(--fmono); font-size: 9px;
+  letter-spacing: .26em; color: #6b6961; margin-bottom: 7px;
+}
+.chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.chip {
+  font-family: var(--fmono); font-size: 10px; letter-spacing: .06em;
+  color: var(--ink2); background: transparent;
+  border: 1px solid var(--line); border-radius: 7px;
+  padding: 6px 9px; cursor: pointer; transition: all .15s;
+}
+.chip:hover { color: var(--ink); border-color: rgba(255,255,255,.24); }
+.chip.on {
+  color: var(--accent); border-color: var(--accent);
+  background: rgba(255,176,32,.07);
+}
+html[data-theme="terminal"] .chip.on { background: rgba(255,210,60,.08); }
+html[data-theme="broadsheet"] .chip.on { background: rgba(240,238,232,.08); }
+.p-note {
+  font-family: var(--fmono); font-size: 9px; line-height: 1.7;
+  color: #5d5b54; border-top: 1px solid var(--line); padding-top: 11px;
+}
+
+/* ---------- the 466px screen ---------- */
+.screen {
+  position: relative; width: 466px; height: 466px; border-radius: 50%;
+  overflow: hidden; background: #000; touch-action: none;
+  user-select: none; -webkit-user-select: none;
+  filter: brightness(var(--bright));
+  font-family: var(--fdisp);
+}
+
+/* dial ring */
+.dial {
+  position: absolute; inset: 0; width: 466px; height: 466px;
+  opacity: 0; transition: opacity .3s ease; pointer-events: none;
+}
+.screen[data-view="now"] .dial { opacity: 1; }
+#ticks line { stroke: rgba(255,255,255,.13); stroke-width: 1; }
+#ticks line.major { stroke: rgba(255,255,255,.34); stroke-width: 2; }
+#ticks line.major.on {
+  stroke: var(--accent); stroke-width: 3;
+  filter: drop-shadow(0 0 3px var(--accent));
+}
+#labels text {
+  font-family: var(--fmono); font-size: 12px; font-weight: 500;
+  letter-spacing: .06em; fill: rgba(255,255,255,.66);
+}
+#labels text.on {
+  fill: var(--accent); font-weight: 600; font-size: 13.5px;
+  filter: drop-shadow(0 0 4px var(--accent));
+}
+#caret { fill: var(--accent); filter: drop-shadow(0 0 3px var(--accent)); }
+
+.screen::after {   /* faint glass sheen */
+  content: ""; position: absolute; inset: 0; border-radius: 50%;
+  background: linear-gradient(152deg, rgba(255,255,255,.05) 0%,
+              rgba(255,255,255,.016) 22%, transparent 42%);
+  pointer-events: none; z-index: 10;
+}
+
+/* views */
+.view {
+  position: absolute; inset: 0; opacity: 0; pointer-events: none;
+  transform: scale(.985); transition: opacity .22s ease, transform .22s ease;
+}
+.view.on { opacity: 1; pointer-events: auto; transform: none; }
+
+/* — now playing — */
+#vNow > * { position: absolute; }
+.status {
+  top: 54px; left: 0; right: 0; height: 24px;
+  display: flex; justify-content: center; align-items: center; gap: 11px;
+  font-family: var(--fmono); font-size: 13px; font-weight: 500;
+  color: #B9B6AE; font-variant-numeric: tabular-nums;
+}
+.status svg { display: block; }
+.status .batt { color: #B9B6AE; }
+.tally {
+  top: 98px; left: 50%; transform: translateX(-50%); height: 26px;
+  display: flex; align-items: center; gap: 8px; padding: 0 14px;
+  border-radius: 13px; font-family: var(--fmono); font-size: 11px;
+  font-weight: 500; letter-spacing: .22em;
+  background: var(--live-soft); border: 1px solid var(--live-line);
+  color: var(--live);
+}
+.tally i {
+  width: 6px; height: 6px; border-radius: 50%; background: currentColor;
+  box-shadow: 0 0 7px currentColor; animation: pulse 1.5s ease-in-out infinite;
+}
+@keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: .35; } }
+.tally.paused {
+  background: rgba(255,255,255,.05); border-color: rgba(255,255,255,.13);
+  color: #8B887F;
+}
+.tally.paused i { animation: none; box-shadow: none; }
+.headline {
+  top: 138px; left: 74px; right: 74px; text-align: center;
+  font-weight: 800; font-size: 36px; line-height: .99;
+  letter-spacing: 0; text-transform: uppercase; color: var(--ink);
+}
+.headline span { display: block; }
+.prog {
+  top: 224px; left: 56px; right: 56px; text-align: center;
+  font-family: var(--fserif); font-style: italic; font-weight: 400;
+  font-size: 22px; color: #EDEAE4;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.genre {
+  top: 258px; left: 40px; right: 40px; text-align: center;
+  font-family: var(--fmono); font-weight: 500; font-size: 10.5px;
+  letter-spacing: .22em; color: var(--accent); opacity: .92;
+  text-transform: uppercase;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.wave { top: 276px; left: 113px; width: 240px; height: 40px; }
+.wave polyline {
+  fill: none; stroke: var(--accent); stroke-width: 2;
+  stroke-linecap: round; stroke-linejoin: round;
+  filter: drop-shadow(0 0 5px var(--accent));
+}
+
+/* transport arc */
+.ctrl { top: 0; left: 0; width: 466px; height: 466px; pointer-events: none; }
+.ctrl button {
+  position: absolute; transform: translate(-50%, -50%);
+  border-radius: 50%; border: 1px solid var(--line);
+  background: var(--surf); color: #DAD7D0; cursor: pointer;
+  display: grid; place-items: center; pointer-events: auto;
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.05), 0 4px 10px rgba(0,0,0,.35);
+  transition: transform .12s ease, border-color .15s, filter .15s;
+}
+.ctrl button:hover { border-color: rgba(255,255,255,.24); }
+.ctrl button:active { transform: translate(-50%,-50%) scale(.93); }
+.ctrl button:disabled { opacity: .38; cursor: default; }
+.ctrl .play {
+  background: var(--ink); border: none; color: #0A0A0B;
+  box-shadow: 0 6px 16px rgba(0,0,0,.5);
+}
+.ctrl .play:hover { filter: brightness(.94); }
+#bList { left: 128.8px; top: 340.9px; width: 44px; height: 44px; }
+#bPrev { left: 174.4px; top: 371.1px; width: 48px; height: 48px; }
+#bPlay { left: 233px;   top: 383px;   width: 54px; height: 54px; }
+#bNext { left: 291.6px; top: 371.1px; width: 48px; height: 48px; }
+#bVol  { left: 337.2px; top: 340.9px; width: 44px; height: 44px; }
+
+/* — list screens (stations / settings) — */
+.vhead {
+  position: absolute; top: 70px; left: 0; right: 0; height: 44px;
+  display: flex; align-items: center; justify-content: center;
+}
+.vhead .title {
+  font-family: var(--fmono); font-size: 11.5px; letter-spacing: .30em;
+  color: var(--ink2); text-transform: uppercase;
+}
+.vhead button {
+  position: absolute; top: 0; width: 44px; height: 44px; border: 0;
+  background: transparent; color: var(--ink2); cursor: pointer;
+  border-radius: 50%; display: grid; place-items: center;
+  transition: color .15s, background .15s;
+}
+.vhead button:hover { color: var(--ink); background: rgba(255,255,255,.06); }
+.vhead .back { left: 104px; }
+.vhead .gear { right: 104px; }
+.listwin {
+  position: absolute; left: 0; right: 0; top: 116px; height: 264px;
+  overflow: hidden; touch-action: none; cursor: grab;
+  -webkit-mask-image: linear-gradient(to bottom, transparent 0, #000 11%, #000 87%, transparent 100%);
+  mask-image: linear-gradient(to bottom, transparent 0, #000 11%, #000 87%, transparent 100%);
+}
+.listwin.drag { cursor: grabbing; }
+.listin { position: absolute; left: 73px; width: 320px; top: 0; }
+.sbar {
+  position: absolute; right: 64px; top: 0; width: 3px; height: 100%;
+  border-radius: 2px; background: rgba(255,255,255,.09);
+  pointer-events: none; opacity: 0; transition: opacity .3s;
+}
+.sthumb {
+  position: absolute; left: 0; width: 3px; border-radius: 2px;
+  background: rgba(255,255,255,.52);
+}
+.row {
+  display: flex; align-items: center; gap: 13px; height: 64px;
+  padding: 0 14px; border-radius: 13px; cursor: pointer;
+  transition: background .15s;
+}
+.row:hover { background: rgba(255,255,255,.045); }
+.row:active { background: rgba(255,255,255,.075); }
+.mono40 {
+  flex: none; width: 40px; height: 40px; border-radius: 50%;
+  border: 1px solid rgba(255,255,255,.16); display: grid; place-items: center;
+  font-family: var(--fmono); font-size: 10.5px; font-weight: 600;
+  letter-spacing: .04em; color: #A9A69E;
+}
+.row.cur .mono40 {
+  border-color: var(--accent); color: var(--accent);
+  background: rgba(255,255,255,.03);
+  box-shadow: 0 0 10px rgba(255,176,32,.12);
+}
+.row .txt { min-width: 0; }
+.row .nm {
+  font-weight: 600; font-size: 15.5px; letter-spacing: .005em; color: var(--ink);
+  display: flex; align-items: center; gap: 10px;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.row .nm .nmtxt {
+  min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.row .nm .air {
+  flex: none; font-family: var(--fmono); font-size: 8.5px; font-weight: 600;
+  letter-spacing: .18em; color: var(--live);
+}
+.row .sub {
+  font-family: var(--fmono); font-size: 10px; letter-spacing: .14em;
+  color: #8B887F; margin-top: 3px; text-transform: uppercase;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.sec {
+  height: 34px; display: flex; align-items: center; padding: 0 14px;
+  font-family: var(--fmono); font-size: 9px; letter-spacing: .32em;
+  color: #66645D; text-transform: uppercase;
+}
+.row.kv { cursor: default; }
+.row.kv:hover { background: transparent; }
+.row.kv .txt { flex: 1; }
+.row.kv .nm { font-size: 14.5px; font-weight: 600; }
+.row .val {
+  font-family: var(--fmono); font-size: 11.5px; color: var(--ink2);
+  letter-spacing: .08em; display: flex; align-items: center; gap: 7px;
+}
+.row .val.amber { color: var(--accent); }
+.row.tap { cursor: pointer; }
+.row.tap:hover { background: rgba(255,255,255,.045); }
+.track {
+  width: 112px; height: 7px; border-radius: 4px; background: rgba(255,255,255,.14);
+  position: relative; cursor: pointer;
+}
+.track .fill {
+  position: absolute; left: 0; top: 0; bottom: 0; border-radius: 3px;
+  background: var(--accent); box-shadow: 0 0 6px rgba(255,176,32,.35);
+}
+.track .knob {
+  position: absolute; top: 50%; width: 14px; height: 14px; border-radius: 50%;
+  background: var(--ink); transform: translate(-50%, -50%);
+  box-shadow: 0 1px 4px rgba(0,0,0,.6);
+}
+
+/* — standby — */
+/* — wifi management — */
+.wrow {
+  position: absolute; top: 118px; left: 73px; width: 320px; height: 56px;
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 0 16px; border-radius: 14px; cursor: pointer;
+  background: rgba(255,255,255,.04); border: 1px solid var(--line);
+  transition: border-color .15s;
+}
+.wrow:hover { border-color: rgba(255,255,255,.20); }
+.wrow .wnm { font-weight: 600; font-size: 15.5px; color: var(--ink); }
+.wrow .wsub {
+  font-family: var(--fmono); font-size: 9.5px; letter-spacing: .1em;
+  color: #8B887F; margin-top: 3px; text-transform: uppercase;
+}
+.sw {
+  width: 52px; height: 30px; border-radius: 15px; border: 0; padding: 0;
+  background: rgba(255,255,255,.14); cursor: pointer; position: relative;
+  transition: background .2s; flex: none;
+}
+.sw i {
+  position: absolute; top: 3px; left: 3px; width: 24px; height: 24px;
+  border-radius: 50%; background: #EDEAE4; transition: transform .2s;
+  box-shadow: 0 1px 3px rgba(0,0,0,.5);
+}
+.sw.on { background: var(--accent); }
+.sw.on i { transform: translateX(22px); }
+.warea {
+  position: absolute; top: 178px; left: 0; right: 0; height: 202px;
+  display: none; flex-direction: column; align-items: center; justify-content: center;
+  text-align: center;
+}
+.warea.on { display: flex; }
+.warea .wt {
+  font-family: var(--fmono); font-size: 11px; letter-spacing: .3em;
+  text-indent: .3em; color: var(--accent); text-transform: uppercase;
+}
+.spin {
+  width: 40px; height: 40px; border-radius: 50%; margin-bottom: 16px;
+  border: 2px solid transparent; border-top-color: var(--accent);
+  border-right-color: rgba(255,176,32,.25); animation: spin 1s linear infinite;
+}
+.wbtn {
+  margin-top: 18px; height: 44px; padding: 0 26px; border-radius: 22px;
+  background: var(--accent); border: 0; color: #0B0B0C; cursor: pointer;
+  font-family: var(--fmono); font-size: 11px; font-weight: 600; letter-spacing: .16em;
+}
+.wbtn:hover { filter: brightness(1.08); }
+.ntag {
+  display: inline-block; vertical-align: 2px; margin-left: 7px;
+  font-family: var(--fmono); font-size: 7.5px; letter-spacing: .14em;
+  color: var(--accent); border: 1px solid rgba(255,176,32,.45);
+  border-radius: 4px; padding: 1.5px 4px; text-transform: uppercase;
+}
+.wifiwin { top: 178px; height: 202px; }
+.row.nw { height: 56px; gap: 12px; }
+.row.nw .bars rect { fill: rgba(255,255,255,.25); }
+.row.nw.lvl1 .bars rect:nth-child(1),
+.row.nw.lvl2 .bars rect:nth-child(-n+2),
+.row.nw.lvl3 .bars rect { fill: var(--ink); }
+.row.nw.cur .bars rect { fill: var(--accent); }
+.row.nw.dim { opacity: .42; }
+.row.nw .val { font-size: 9.5px; letter-spacing: .14em; }
+.row.nw .val.ok { color: var(--accent); }
+.row.nw .val.bad { color: var(--live); }
+#wifiToast {
+  position: absolute; left: 50%; bottom: 58px; transform: translateX(-50%) translateY(6px);
+  background: #1B1B20; border: 1px solid rgba(255,255,255,.14); border-radius: 11px;
+  padding: 9px 16px; font-family: var(--fmono); font-size: 10px; letter-spacing: .06em;
+  color: var(--ink); opacity: 0; pointer-events: none; transition: all .25s; white-space: nowrap;
+}
+#wifiToast.on { opacity: 1; transform: translateX(-50%) translateY(0); }
+.pass-x {
+  position: absolute; top: 92px; right: 56px; width: 44px; height: 44px;
+  border: 0; background: transparent; color: var(--ink2); cursor: pointer;
+  border-radius: 50%; display: grid; place-items: center; z-index: 3;
+}
+.pass-x:hover { color: var(--ink); background: rgba(255,255,255,.06); }
+.pass-ssid {
+  position: absolute; top: 108px; left: 40px; right: 40px; text-align: center;
+  font-weight: 600; font-size: 16px; color: var(--ink);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  pointer-events: none;
+}
+.pass-ssid svg { vertical-align: -2px; margin-right: 6px; color: var(--ink2); }
+.pass-box {
+  position: absolute; top: 148px; width: 310px; margin: 0 auto; height: 46px;
+  border-radius: 12px; background: rgba(255,255,255,.06);
+  border: 1px solid rgba(255,255,255,.14);
+  display: flex; align-items: center; justify-content: center; gap: 3px;
+  padding-right: 44px;          /* content area 266px, eye button on the right */
+}
+.pass-box .dots {
+  font-family: var(--fmono); font-size: 16px; letter-spacing: .18em; color: var(--ink);
+}
+.pass-box .pcar {
+  width: 2px; height: 18px; background: var(--accent);
+  animation: pulse 1s step-end infinite;
+}
+.pass-box .dots {
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%;
+}
+.pass-box .dots.revealed {
+  font-family: var(--fdisp); font-weight: 600; font-size: 16px; letter-spacing: normal;
+}
+.pass-eye {
+  position: absolute; right: 0; top: 0; bottom: 0; width: 44px;
+  display: grid; place-items: center;
+  background: none; border: 0; padding: 0; cursor: pointer;
+  color: var(--ink2);
+}
+.pass-eye.show { color: var(--accent); }
+.pass-eye.show .slash { display: none; }
+.pass-err {
+  position: absolute; top: 204px; left: 26px; right: 26px; text-align: center;
+  font-family: var(--fmono); font-size: 10px; letter-spacing: .06em;
+  color: var(--live); display: none;
+}
+.pass-err.on { display: block; }
+
+/* — network detail: disconnect / forget — */
+#ovNet { background: rgba(6,6,7,.62); }
+.netcard {
+  position: absolute; top: 50%; transform: translateY(-50%);
+  width: 312px; margin: 0 auto; padding: 26px 24px 22px; border-radius: 20px;
+  background: #101013; border: 1px solid rgba(255,255,255,.14);
+  text-align: center; box-shadow: 0 24px 60px rgba(0,0,0,.6);
+}
+.net-x {
+  position: absolute; top: 12px; right: 12px; width: 40px; height: 40px;
+  border: 0; background: transparent; color: var(--ink2); cursor: pointer;
+  border-radius: 50%; display: grid; place-items: center;
+}
+.net-x:hover { color: var(--ink); background: rgba(255,255,255,.07); }
+.net-ic { color: var(--accent); display: grid; place-items: center; margin-bottom: 12px; }
+.net-ssid { font-weight: 700; font-size: 21px; color: var(--ink); }
+.net-meta {
+  font-family: var(--fmono); font-size: 10px; letter-spacing: .14em;
+  color: var(--ink2); text-transform: uppercase; margin-top: 8px;
+}
+.net-acts { display: flex; gap: 10px; margin-top: 20px; }
+.net-b {
+  flex: 1; height: 46px; border-radius: 23px; cursor: pointer;
+  font-family: var(--fmono); font-size: 11px; font-weight: 600; letter-spacing: .14em;
+}
+.net-b.dz { background: var(--accent); border: 0; color: #0B0B0C; }
+.net-b.dz:hover { filter: brightness(1.08); }
+.net-b.fg { background: transparent; border: 1px solid rgba(232,117,110,.5); color: #E8756E; }
+.net-b.fg:hover { background: rgba(232,117,110,.10); }
+.net-hint {
+  font-family: var(--fmono); font-size: 9.5px; line-height: 1.7; letter-spacing: .05em;
+  color: #6E6C65; margin-top: 14px;
+}
+.kb { position: absolute; top: 228px; left: 0; right: 0; }
+.kbrow { display: flex; justify-content: center; gap: 6px; margin-bottom: 8px; }
+.key {
+  width: 34px; height: 38px; padding: 0; border-radius: 8px;
+  background: #17171C; border: 1px solid rgba(255,255,255,.09);
+  color: var(--ink); font-family: var(--fdisp); font-size: 15px; font-weight: 500;
+  cursor: pointer; display: grid; place-items: center;
+  box-shadow: 0 2px 4px rgba(0,0,0,.4);
+}
+.key:active { background: #23232A; transform: translateY(1px); }
+.key.mod {
+  background: #202027; font-family: var(--fmono); font-size: 10px;
+  letter-spacing: .06em; color: var(--ink2);
+}
+.key.mod.wide { width: 46px; }
+.key.space { width: 144px; }
+.key.join {
+  width: 86px; background: var(--accent); border: 0; color: #0B0B0C;
+  font-family: var(--fmono); font-size: 11px; font-weight: 600; letter-spacing: .12em;
+}
+#vStandby { cursor: pointer; }
+#vStandby > * { position: absolute; left: 0; right: 0; text-align: center; }
+.sb-time {
+  top: 146px; font-weight: 800; font-size: 96px; line-height: 1;
+  letter-spacing: -.03em; font-variant-numeric: tabular-nums; color: var(--ink);
+}
+.sb-date {
+  top: 262px; font-family: var(--fmono); font-size: 12px; letter-spacing: .34em;
+  color: var(--ink2); text-transform: uppercase;
+}
+.sb-rule {
+  top: 296px; left: 50% !important; right: auto !important;
+  width: 84px; height: 1px; transform: translateX(-50%);
+  background: rgba(255,255,255,.22);
+}
+.sb-air {
+  top: 314px; display: flex; justify-content: center; align-items: center; gap: 9px;
+  font-family: var(--fmono); font-size: 10.5px; letter-spacing: .22em;
+  color: var(--live);
+}
+.sb-air.paused { color: #8B887F; }
+.sb-air i {
+  width: 5px; height: 5px; border-radius: 50%; background: currentColor;
+  box-shadow: 0 0 6px currentColor; animation: pulse 1.5s ease-in-out infinite;
+}
+.sb-air.paused i { animation: none; box-shadow: none; }
+.sb-air b { font-weight: 500; color: var(--ink2); }
+
+/* — boot — */
+#vBoot > div { position: absolute; left: 0; right: 0; text-align: center; }
+.boot-word {
+  top: 186px; font-weight: 800; font-size: 46px; letter-spacing: .34em;
+  text-indent: .34em; color: var(--ink);
+}
+.boot-sub {
+  top: 248px; font-family: var(--fmono); font-size: 9.5px; letter-spacing: .46em;
+  text-indent: .46em; color: var(--ink2); text-transform: uppercase;
+}
+.boot-spin { top: 292px; display: flex; justify-content: center; }
+.boot-spin svg { animation: spin 1.1s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
+.boot-spin circle {
+  fill: none; stroke: var(--accent); stroke-width: 2; stroke-linecap: round;
+  stroke-dasharray: 42 130; filter: drop-shadow(0 0 4px var(--accent));
+}
+
+/* — overlays — */
+.ov {
+  position: absolute; inset: 0; z-index: 5; display: none;
+  background: #000; cursor: pointer;
+}
+.ov.on { display: block; }
+.ov > div { position: absolute; left: 0; right: 0; text-align: center; }
+#ovCon .con-disc {
+  top: 148px; left: 50% !important; right: auto !important;
+  width: 88px; height: 88px; transform: translateX(-50%);
+  border-radius: 50%; background: #101013;
+  border: 1px solid rgba(255,255,255,.12); display: grid; place-items: center;
+  font-family: var(--fmono); font-size: 15px; font-weight: 600;
+  letter-spacing: .06em; color: var(--accent);
+}
+#ovCon .con-ring {
+  top: 136px; left: 50% !important; right: auto !important;
+  width: 112px; height: 112px; transform: translateX(-50%);
+  border-radius: 50%; animation: spin 1.05s linear infinite;
+  border: 2px solid transparent; border-top-color: var(--accent);
+  border-right-color: rgba(255,176,32,.25);
+}
+#ovCon .con-lbl {
+  top: 268px; font-family: var(--fmono); font-size: 11px; letter-spacing: .34em;
+  color: var(--accent); text-transform: uppercase;
+}
+#ovCon .con-nm { top: 294px; font-weight: 600; font-size: 16px; color: var(--ink); }
+#ovCon .con-hint {
+  top: 330px; font-family: var(--fmono); font-size: 9px; letter-spacing: .2em;
+  color: #605E57; text-transform: uppercase;
+}
+#ovErr .err-nm {
+  top: 148px; font-weight: 600; font-size: 15px; color: #B9B6AE;
+}
+#ovErr .err-t {
+  top: 186px; font-weight: 700; font-size: 22px; letter-spacing: .02em;
+  color: var(--live); text-transform: uppercase;
+}
+#ovErr .err-s {
+  top: 224px; font-family: var(--fmono); font-size: 10.5px; letter-spacing: .14em;
+  color: var(--ink2);
+}
+#ovErr .err-btns {
+  top: 264px; display: flex; justify-content: center; gap: 12px;
+}
+#ovErr button {
+  height: 46px; border-radius: 23px; padding: 0 24px; cursor: pointer;
+  font-family: var(--fmono); font-size: 11.5px; font-weight: 600;
+  letter-spacing: .16em; text-transform: uppercase;
+}
+#ovErr .retry { background: var(--accent); border: 0; color: #0B0B0C; }
+#ovErr .retry:hover { filter: brightness(1.08); }
+#ovErr .skip {
+  background: transparent; border: 1px solid rgba(255,255,255,.36); color: var(--ink);
+}
+#ovErr .skip:hover { border-color: rgba(255,255,255,.5); }
+#ovVol .vol-k { top: 158px; display: flex; justify-content: center; color: var(--ink2); }
+#ovVol .vol-l {
+  top: 196px; font-family: var(--fmono); font-size: 10.5px; letter-spacing: .4em;
+  text-indent: .4em; color: var(--ink2); text-transform: uppercase;
+}
+#ovVol .vol-n {
+  top: 214px; font-family: var(--fmono); font-weight: 600; font-size: 60px;
+  line-height: 1; color: var(--ink); font-variant-numeric: tabular-nums;
+}
+#ovVol svg { position: absolute; inset: 0; }
+#ovVol .seg { stroke: rgba(255,255,255,.18); stroke-width: 6; stroke-linecap: round; }
+#ovVol .seg.on { stroke: var(--accent); filter: drop-shadow(0 0 4px var(--accent)); }
+
+/* touch ripple */
+.rip {
+  position: absolute; z-index: 9; width: 46px; height: 46px;
+  margin: -23px 0 0 -23px; border-radius: 50%; pointer-events: none;
+  background: radial-gradient(circle, rgba(255,255,255,.22) 0%, rgba(255,255,255,0) 70%);
+  animation: rip .45s ease-out forwards;
+}
+@keyframes rip { from { transform: scale(.4); opacity: 1; }
+                 to   { transform: scale(1.7); opacity: 0; } }
+
+@media (max-width: 980px) {
+  .stage { gap: 30px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  * { animation-duration: .001s !important; transition-duration: .001s !important; }
+}
+</style>
+</head>
+<body>
+<script>window.__errs = []; window.addEventListener('error',
+  function(e){ window.__errs.push(String(e.message)); });</script>
+
+<header class="head">
+  <div class="brand">SIGNAL<em>·</em></div>
+  <div class="meta">Internet Radio — ESP32-S3-Touch-AMOLED-1.75C · 466 × 466 AMOLED · concept D prototype</div>
+  <a href="../index.html">← all concepts</a>
+</header>
+
+<main class="stage">
+  <div class="devcol">
+    <div class="fit" id="fit">
+      <div class="device" id="device">
+        <button class="side boot" id="btnBoot" title="BOOT button — replay boot"></button>
+        <button class="side pwr"  id="btnPwr"  title="PWR button — screen on/off"></button>
+        <div class="case">
+          <div class="lanyard"></div>
+          <div class="bezel">
+            <div class="screen" id="screen" data-view="boot">
+
+              <!-- tuning dial ring -->
+              <svg class="dial" id="dial" viewBox="0 0 466 466">
+                <circle cx="233" cy="233" r="230" fill="none" stroke="rgba(255,255,255,.07)"/>
+                <circle cx="233" cy="233" r="190" fill="none" stroke="rgba(255,255,255,.05)"/>
+                <g id="dialG">
+                  <g id="ticks"></g>
+                </g>
+                <g id="labels"></g>
+                <polygon id="caret" points="233,19 226,7 240,7"/>
+              </svg>
+
+              <!-- boot -->
+              <div class="view" id="vBoot">
+                <div class="boot-word">SIGNAL</div>
+                <div class="boot-sub">Internet Radio</div>
+                <div class="boot-spin">
+                  <svg width="46" height="46" viewBox="0 0 46 46"><circle cx="23" cy="23" r="20"/></svg>
+                </div>
+              </div>
+
+              <!-- standby -->
+              <div class="view" id="vStandby">
+                <div class="sb-time" id="sbTime">--:--</div>
+                <div class="sb-date" id="sbDate">MON · SEP 28</div>
+                <div class="sb-rule"></div>
+                <div class="sb-air" id="sbAir"><i></i><span>ON AIR</span><b id="sbSt">BLOOMBERG RADIO</b></div>
+              </div>
+
+              <!-- now playing -->
+              <div class="view" id="vNow">
+                <div class="status">
+                  <svg width="17" height="13" viewBox="0 0 17 13" fill="currentColor" aria-hidden="true" id="wifiIcon">
+                    <rect x="0" y="8" width="3.4" height="5" rx="1"/>
+                    <rect x="5.6" y="5" width="3.4" height="8" rx="1"/>
+                    <rect x="11.2" y="0" width="3.4" height="13" rx="1" opacity=".45"/>
+                  </svg>
+                  <span id="clock">--:--</span>
+                  <span class="batt">
+                    <svg width="25" height="12" viewBox="0 0 25 12" aria-hidden="true"
+                         style="vertical-align:-1px;margin-right:4px">
+                      <rect x=".6" y=".6" width="21" height="10.8" rx="3"
+                            fill="none" stroke="currentColor" stroke-width="1.2" opacity=".6"/>
+                      <rect x="2.4" y="2.4" width="15" height="7.2" rx="1.6" fill="currentColor"/>
+                      <path d="M23.2 4.2v3.6a2 2 0 0 0 0-3.6z" fill="currentColor" opacity=".6"/>
+                    </svg>78%</span>
+                </div>
+
+                <div class="tally" id="tally"><i></i><span id="tallyTxt">ON AIR</span></div>
+                <h1 class="headline" id="headline"><span>BLOOMBERG</span><span>RADIO</span></h1>
+                <div class="prog" id="prog">Surveillance</div>
+                <div class="genre" id="genre">News · Business</div>
+                <svg class="wave" viewBox="0 0 240 40"><polyline id="waveLine" points=""/></svg>
+
+                <div class="ctrl">
+                  <button id="bList" title="Stations">
+                    <svg width="19" height="19" viewBox="0 0 20 20" stroke="currentColor"
+                         stroke-width="1.6" stroke-linecap="round" fill="none">
+                      <path d="M7.5 5.5h9M7.5 10h9M7.5 14.5h9"/>
+                      <circle cx="3.6" cy="5.5" r="1" fill="currentColor" stroke="none"/>
+                      <circle cx="3.6" cy="10" r="1" fill="currentColor" stroke="none"/>
+                      <circle cx="3.6" cy="14.5" r="1" fill="currentColor" stroke="none"/>
+                    </svg>
+                  </button>
+                  <button id="bPrev" title="Previous station">
+                    <svg width="17" height="17" viewBox="0 0 20 20" fill="currentColor">
+                      <rect x="4.6" y="5.4" width="2.2" height="9.2" rx="1.1"/>
+                      <path d="M16.4 6.2v7.6L8.6 10z"/>
+                    </svg>
+                  </button>
+                  <button id="bPlay" class="play" title="Play / pause">
+                    <svg id="icPlay" width="20" height="20" viewBox="0 0 20 20" fill="currentColor">
+                      <path d="M7.2 5.2v9.6L15.4 10z"/>
+                    </svg>
+                    <svg id="icPause" width="20" height="20" viewBox="0 0 20 20" fill="currentColor"
+                         style="display:none">
+                      <rect x="6" y="5.4" width="3.2" height="9.2" rx="1.2"/>
+                      <rect x="11.2" y="5.4" width="3.2" height="9.2" rx="1.2"/>
+                    </svg>
+                  </button>
+                  <button id="bNext" title="Next station">
+                    <svg width="17" height="17" viewBox="0 0 20 20" fill="currentColor">
+                      <path d="M3.6 6.2v7.6L11.4 10z"/>
+                      <rect x="13.2" y="5.4" width="2.2" height="9.2" rx="1.1"/>
+                    </svg>
+                  </button>
+                  <button id="bVol" title="Volume">
+                    <svg width="19" height="19" viewBox="0 0 20 20" fill="currentColor">
+                      <path d="M3.4 7.8v4.4h2.9L10.4 15V5L6.3 7.8z"/>
+                      <path d="M12.6 7.4a4.2 4.2 0 0 1 0 5.2" fill="none" stroke="currentColor"
+                            stroke-width="1.5" stroke-linecap="round"/>
+                      <path d="M14.9 5.4a7.4 7.4 0 0 1 0 9.2" fill="none" stroke="currentColor"
+                            stroke-width="1.5" stroke-linecap="round"/>
+                    </svg>
+                  </button>
+                </div>
+              </div>
+
+              <!-- stations -->
+              <div class="view" id="vStations">
+                <div class="vhead">
+                  <button class="back" data-go="now" title="Back">
+                    <svg width="18" height="18" viewBox="0 0 20 20" fill="none" stroke="currentColor"
+                         stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round">
+                      <path d="M12.4 4.6 6.4 10l6 5.4"/>
+                    </svg>
+                  </button>
+                  <span class="title">Stations</span>
+                  <button class="gear" data-go="settings" title="Settings">
+                    <svg width="18" height="18" viewBox="0 0 20 20" fill="none" stroke="currentColor"
+                         stroke-width="1.6" stroke-linecap="round">
+                      <path d="M3 6h14M3 10h14M3 14h14"/>
+                      <circle cx="7.5" cy="6" r="1.9" fill="#000"/>
+                      <circle cx="13" cy="10" r="1.9" fill="#000"/>
+                      <circle cx="6" cy="14" r="1.9" fill="#000"/>
+                    </svg>
+                  </button>
+                </div>
+                <div class="listwin" id="winStations"><div class="listin" id="inStations"></div><div class="sbar" id="barStations"><div class="sthumb" id="thumbStations"></div></div></div>
+              </div>
+
+              <!-- settings -->
+              <div class="view" id="vSettings">
+                <div class="vhead">
+                  <button class="back" data-go="now" title="Back">
+                    <svg width="18" height="18" viewBox="0 0 20 20" fill="none" stroke="currentColor"
+                         stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round">
+                      <path d="M12.4 4.6 6.4 10l6 5.4"/>
+                    </svg>
+                  </button>
+                  <span class="title">Settings</span>
+                </div>
+                <div class="listwin" id="winSettings"><div class="listin" id="inSettings">
+                  <div class="row kv tap" id="rowWifi">
+                    <div class="txt"><div class="nm">Wi-Fi</div>
+                      <div class="sub" id="wifiSub">Connected · 2.4 GHz</div></div>
+                    <div class="val"><span id="wifiVal">Lab_2.4G</span>
+                      <svg width="13" height="13" viewBox="0 0 20 20" fill="none" stroke="currentColor"
+                           stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M7.6 4.6 13 10l-5.4 5.4"/>
+                      </svg>
+                    </div>
+                  </div>
+                  <div class="row kv">
+                    <div class="txt"><div class="nm">Brightness</div>
+                      <div class="sub">AMOLED · 700 nits max</div></div>
+                    <div class="val">
+                      <div class="track" id="brTrack">
+                        <div class="fill" id="brFill"></div><div class="knob" id="brKnob"></div>
+                      </div><span id="brPct">100%</span>
+                    </div>
+                  </div>
+                  <div class="row kv tap" id="rowSleep">
+                    <div class="txt"><div class="nm">Sleep timer</div>
+                      <div class="sub">Stop playback after</div></div>
+                    <div class="val" id="sleepVal">OFF</div>
+                  </div>
+                  <div class="row kv">
+                    <div class="txt"><div class="nm">About</div>
+                      <div class="sub">ESP32-S3R8 · 8 MB PSRAM</div></div>
+                    <div class="val">v0.1</div>
+                  </div>
+                </div></div>
+              </div>
+
+              <!-- wi-fi -->
+              <div class="view" id="vWifi">
+                <div class="vhead">
+                  <button class="back" data-go="settings" title="Back">
+                    <svg width="18" height="18" viewBox="0 0 20 20" fill="none" stroke="currentColor"
+                         stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round">
+                      <path d="M12.4 4.6 6.4 10l6 5.4"/>
+                    </svg>
+                  </button>
+                  <span class="title">Wi-Fi</span>
+                  <button class="gear" id="wifiRescan" title="Rescan networks">
+                    <svg width="18" height="18" viewBox="0 0 20 20" fill="none" stroke="currentColor"
+                         stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
+                      <path d="M16.6 10a6.6 6.6 0 1 1-1.95-4.65"/>
+                      <path d="M16.7 2.6v3.6h-3.6"/>
+                    </svg>
+                  </button>
+                </div>
+                <div class="wrow" id="wlanRow">
+                  <div>
+                    <div class="wnm">Wi-Fi</div>
+                    <div class="wsub" id="wlanSub">2.4 GHz · 802.11 b/g/n</div>
+                  </div>
+                  <button class="sw" id="wlanSw" aria-label="Wi-Fi on/off"><i></i></button>
+                </div>
+                <div class="warea" id="wifiScanArea">
+                  <div class="spin"></div><div class="wt">Scanning</div>
+                </div>
+                <div class="warea" id="wifiOffArea">
+                  <svg width="36" height="28" viewBox="0 0 20 15" fill="currentColor" style="color:#5F5D57">
+                    <rect x="1" y="9" width="3.6" height="5" rx="1"/>
+                    <rect x="6.8" y="6" width="3.6" height="8" rx="1"/>
+                    <rect x="12.6" y="1" width="3.6" height="13" rx="1"/>
+                    <path d="M1.5 14.2 15.8 .8" stroke="#0A0A0B" stroke-width="3.4" stroke-linecap="round"/>
+                    <path d="M1.5 14.2 15.8 .8" stroke="#5F5D57" stroke-width="1.6" stroke-linecap="round"/>
+                  </svg>
+                  <div class="wt" style="color:#8B887F;margin-top:16px">Wi-Fi is off</div>
+                  <button class="wbtn" id="wifiOnBtn">Turn on</button>
+                </div>
+                <div class="listwin wifiwin" id="winWifi">
+                  <div class="listin" id="inWifi"></div>
+                  <div class="sbar" id="barWifi"><div class="sthumb" id="thumbWifi"></div></div>
+                </div>
+                <div id="wifiToast"></div>
+              </div>
+
+              <!-- overlays -->
+              <div class="ov" id="ovCon">
+                <div class="con-ring"></div>
+                <div class="con-disc" id="conCode">BBG</div>
+                <div class="con-lbl" id="conLbl">Connecting</div>
+                <div class="con-nm" id="conName">Bloomberg Radio</div>
+                <div class="con-hint">Tap to cancel</div>
+              </div>
+              <div class="ov" id="ovErr">
+                <div class="err-nm" id="errNm">Bloomberg Radio</div>
+                <div class="err-t">Stream unavailable</div>
+                <div class="err-s" id="errS">The station did not respond</div>
+                <div class="err-btns">
+                  <button class="retry" id="errRetry">Retry</button>
+                  <button class="skip" id="errSkip">Next station</button>
+                </div>
+              </div>
+              <div class="ov" id="ovVol">
+                <svg viewBox="0 0 466 466" id="volSvg"><g id="volSegs"></g></svg>
+                <div class="vol-k">
+                  <svg width="20" height="20" viewBox="0 0 20 20" fill="currentColor">
+                    <path d="M3.4 7.8v4.4h2.9L10.4 15V5L6.3 7.8z"/>
+                    <path d="M12.6 7.4a4.2 4.2 0 0 1 0 5.2" fill="none" stroke="currentColor"
+                          stroke-width="1.5" stroke-linecap="round"/>
+                    <path d="M14.9 5.4a7.4 7.4 0 0 1 0 9.2" fill="none" stroke="currentColor"
+                          stroke-width="1.5" stroke-linecap="round"/>
+                  </svg>
+                </div>
+                <div class="vol-l">Volume</div>
+                <div class="vol-n" id="volNum">62</div>
+              </div>
+              <div class="ov" id="ovPass">
+                <button class="pass-x" id="passCancel">
+                  <svg width="16" height="16" viewBox="0 0 16 16" stroke="currentColor"
+                       stroke-width="1.8" stroke-linecap="round"><path d="M3 3l10 10M13 3L3 13"/></svg>
+                </button>
+                <div class="pass-ssid" id="passSsid"></div>
+                <div class="pass-box"><span class="dots" id="passDots"></span><i class="pcar"></i><button class="pass-eye" id="passEye" title="Show password"><svg width="17" height="17" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M1 8s2.7-4.5 7-4.5S15 8 15 8s-2.7 4.5-7 4.5S1 8 1 8z"/><circle cx="8" cy="8" r="2"/><path class="slash" d="M2.5 13.5 13.5 2.5"/></svg></button></div>
+                <div class="pass-err" id="passErr">Password must be at least 8 characters</div>
+                <div class="kb" id="kb"></div>
+              </div>
+
+              <div class="ov" id="ovNet">
+                <div class="netcard">
+                  <button class="net-x" id="netClose" title="Close">
+                    <svg width="15" height="15" viewBox="0 0 16 16" stroke="currentColor"
+                         stroke-width="1.8" stroke-linecap="round"><path d="M3 3l10 10M13 3L3 13"/></svg>
+                  </button>
+                  <div class="net-ic">
+                    <svg width="34" height="34" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                         stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
+                      <path d="M12 2.5 4.5 5.5v6c0 5 3.2 8.4 7.5 10 4.3-1.6 7.5-5 7.5-10v-6z"/>
+                      <path d="M8.8 12.1l2.2 2.2 4.2-4.6"/>
+                    </svg>
+                  </div>
+                  <div class="net-ssid" id="netSsid">&mdash;</div>
+                  <div class="net-meta" id="netMeta">Connected</div>
+                  <div class="net-acts">
+                    <button class="net-b dz" id="netDisconnect">DISCONNECT</button>
+                    <button class="net-b fg" id="netForget">FORGET</button>
+                  </div>
+                  <div class="net-hint">Disconnect keeps the password &mdash;
+                    forget erases it.</div>
+                </div>
+              </div>
+
+            </div><!-- /screen -->
+          </div>
+        </div>
+      </div>
+    </div>
+    <p class="cap">
+      <b>Drag the dial ring</b> to tune · swipe ↑ stations · swipe ↓ settings ·
+      scroll wheel skips station · <b>PWR</b> on the case = standby · <b>BOOT</b> = reboot · <b>settings → wi-fi</b> picks any network
+    </p>
+  </div>
+
+  <aside class="panel">
+    <div class="p-title">PROTOTYPE CONTROLS</div>
+    <div class="p-group"><label>Screen</label><div class="chips" id="chipScreen">
+      <button class="chip" data-v="boot">Boot</button>
+      <button class="chip" data-v="standby">Standby</button>
+      <button class="chip" data-v="now">Now playing</button>
+      <button class="chip" data-v="stations">Stations</button>
+      <button class="chip" data-v="settings">Settings</button>
+      <button class="chip" data-v="wifi">Wi-Fi</button>
+    </div></div>
+    <div class="p-group"><label>Simulate</label><div class="chips" id="chipSim">
+      <button class="chip" data-s="connect">Connecting</button>
+      <button class="chip" data-s="error">Stream error</button>
+      <button class="chip" data-s="failnext">Next connect fails</button>
+    </div></div>
+    <div class="p-group"><label>Theme</label><div class="chips" id="chipTheme">
+      <button class="chip" data-t="onair">On-Air</button>
+      <button class="chip" data-t="terminal">Terminal</button>
+      <button class="chip" data-t="broadsheet">Broadsheet</button>
+    </div></div>
+    <div class="p-note">Review scaffolding — this panel is not part of the device UI.
+      State persists in localStorage.</div>
+  </aside>
+</main>
+
+<script>
+(function () {
+"use strict";
+const $  = s => document.querySelector(s);
+const $$ = s => Array.from(document.querySelectorAll(s));
+const C = 233, RM = matchMedia('(prefers-reduced-motion: reduce)').matches;
+const N = 40;                         // degrees between stations
+
+/* ---------------- stations ---------------- */
+const STATIONS = [
+  { code:"BBG",  lines:["BLOOMBERG","RADIO"],        name:"Bloomberg Radio",
+    genre:"News · Business",        prog:"Surveillance",            sec:"News & Talk" },
+  { code:"NPR",  lines:["NPR NEWS","AND CULTURE"],   name:"NPR News and Culture",
+    genre:"News · Public radio",    prog:"All Things Considered",   sec:"News & Talk" },
+  { code:"BBC",  lines:["BBC WORLD","SERVICE"],      name:"BBC World Service",
+    genre:"News · World",           prog:"Global News Podcast",     sec:"News & Talk" },
+  { code:"WNYC", lines:["WNYC","93.9 FM"],           name:"WNYC 93.9 FM",
+    genre:"Public radio · New York",prog:"The Brian Lehrer Show",   sec:"News & Talk" },
+  { code:"KQED", lines:["KQED","PUBLIC RADIO"],      name:"KQED Public Radio",
+    genre:"Public radio · Bay Area",prog:"Forum",                   sec:"News & Talk" },
+  { code:"CBC",  lines:["CBC RADIO","ONE"],          name:"CBC Radio One",
+    genre:"Public radio · Canada",  prog:"As It Happens",           sec:"News & Talk" },
+  { code:"SOMA", lines:["SOMAFM","GROOVE SALAD"],    name:"SomaFM · Groove Salad",
+    genre:"Music · Ambient",        prog:"Groove Salad",            sec:"Music" },
+  { code:"RP",   lines:["RADIO","PARADISE"],         name:"Radio Paradise · Main Mix",
+    genre:"Music · Eclectic",       prog:"Main Mix",                sec:"Music" },
+  { code:"JAZ",  lines:["JAZZ24"],                   name:"Jazz24",
+    genre:"Music · Jazz",           prog:"Midnight Jazz",           sec:"Music" },
+];
+const NS = STATIONS.length;
+
+/* ---------------- state ---------------- */
+const KEY = 'signal-proto-v1';
+/* #fresh — wipe persisted state. Open index.html#fresh once if a previous
+ * session left Wi-Fi off/forgotten (mirrors wiping NVS on the device). */
+if (location.hash === '#fresh') {
+  try { localStorage.removeItem(KEY); } catch (e) {}
+  try { history.replaceState(null, '', location.pathname + location.search); }
+  catch (e) { location.hash = ''; }
+}
+const st = Object.assign(
+  { cur:0, vol:62, bright:1, theme:'onair', sleep:'OFF', view:'boot',
+    wifiPow:'on', wifiSsid:'Lab_2.4G', saved:['Lab_2.4G'] },
+  JSON.parse(localStorage.getItem(KEY) || '{}'));
+st.playing = false; st.connecting = false; st.failNext = false;
+/* migrate pre-convergence keys: mode names -> power on/off */
+if (st.wifiPow === 'client') st.wifiPow = 'on';
+if (st.wifiPow === 'ap') st.wifiPow = 'on';
+if (!Array.isArray(st.saved)) st.saved = ['Lab_2.4G'];
+if (st.wifiSsid && !st.saved.includes(st.wifiSsid)) st.saved.push(st.wifiSsid);
+/* boot self-heal: a previous review session may have left Wi-Fi off or
+ * the network forgotten. The real device boots by auto-joining its saved
+ * network, so the prototype does the same instead of opening on the
+ * "Stream unavailable" face every time. Deliberate error demos stay
+ * available through the sim chips (connect / failnext / error). */
+if (st.wifiPow !== 'on') st.wifiPow = 'on';
+if (!st.wifiSsid || !st.saved.length) {
+  if (!st.saved.length) st.saved = ['Lab_2.4G'];
+  st.wifiSsid = st.saved[0];
+}
+const save = () => localStorage.setItem(KEY, JSON.stringify(
+  { cur:st.cur, vol:st.vol, bright:st.bright, theme:st.theme, sleep:st.sleep,
+    wifiPow:st.wifiPow, wifiSsid:st.wifiSsid, saved:st.saved }));
+if (!STATIONS[st.cur]) st.cur = 0;
+
+/* ---------------- dial ring ---------------- */
+const gTicks = $('#ticks'), gLabels = $('#labels'), dialG = $('#dialG');
+let rot = -st.cur * N, lastNear = -1, rotAnim = null;
+
+(function buildDial() {
+  const NSVG = 'http://www.w3.org/2000/svg';
+  for (let a = 0; a < 360; a += 5) {
+    const ln = document.createElementNS(NSVG, 'line');
+    const maj = a % N === 0, r1 = maj ? 213 : 221;
+    const s = Math.sin(a * Math.PI / 180), c = Math.cos(a * Math.PI / 180);
+    ln.setAttribute('x1', (C + r1 * s).toFixed(2));
+    ln.setAttribute('y1', (C - r1 * c).toFixed(2));
+    ln.setAttribute('x2', (C + 229 * s).toFixed(2));
+    ln.setAttribute('y2', (C - 229 * c).toFixed(2));
+    if (maj) { ln.setAttribute('class', 'major'); ln.dataset.idx = ((a / N) % NS); }
+    gTicks.appendChild(ln);
+  }
+  STATIONS.forEach((s, i) => {
+    const t = document.createElementNS(NSVG, 'text');
+    t.setAttribute('text-anchor', 'middle');
+    t.setAttribute('dominant-baseline', 'central');
+    t.textContent = s.code;
+    t.dataset.idx = i;
+    gLabels.appendChild(t);
+  });
+})();
+
+function applyDial() {
+  dialG.setAttribute('transform', 'rotate(' + rot.toFixed(2) + ' 233 233)');
+  const near = ((Math.round(-rot / N) % NS) + NS) % NS;
+  gLabels.childNodes.forEach((t, j) => {
+    const th = (j * N + rot) * Math.PI / 180;
+    t.setAttribute('x', (C + 200 * Math.sin(th)).toFixed(2));
+    t.setAttribute('y', (C - 200 * Math.cos(th)).toFixed(2));
+  });
+  if (near !== lastNear) {
+    lastNear = near;
+    gTicks.childNodes.forEach(l => l.classList.contains('major') &&
+      l.classList.toggle('on', +l.dataset.idx === near));
+    gLabels.childNodes.forEach((t, j) => t.classList.toggle('on', j === near));
+  }
+}
+function animateRot(to) {
+  if (rotAnim) cancelAnimationFrame(rotAnim);
+  if (RM) { rot = to; applyDial(); return; }
+  const from = rot, t0 = performance.now(), ms = 520;
+  const ease = x => 1 - Math.pow(1 - x, 3);
+  (function step(t) {
+    const p = Math.min(1, (t - t0) / ms);
+    rot = from + (to - from) * ease(p);
+    applyDial();
+    if (p < 1) rotAnim = requestAnimationFrame(step);
+  })(t0);
+}
+
+/* ---------------- views ---------------- */
+const VIEWS = { boot:'#vBoot', standby:'#vStandby', now:'#vNow',
+                stations:'#vStations', settings:'#vSettings', wifi:'#vWifi' };
+function setView(v, fromPanel) {
+  if (!VIEWS[v]) return;
+  st.view = v;
+  $('#screen').dataset.view = v;
+  Object.entries(VIEWS).forEach(([k, sel]) => $(sel).classList.toggle('on', k === v));
+  $$('#chipScreen .chip').forEach(c => c.classList.toggle('on', c.dataset.v === v));
+  if (v === 'stations') { scrollList(0, true); }
+  if (v === 'wifi') enterWifi();
+  if (v !== 'now') hideVol();
+  if (fromPanel) save();
+}
+
+/* ---------------- render ---------------- */
+function fitHeadline() {
+  const h = $('#headline');
+  h.style.fontSize = '36px';
+  const scale = window.__scale || 1, max = 318;
+  let w = 0;
+  Array.from(h.children).forEach(sp => {
+    const r = document.createRange(); r.selectNodeContents(sp);
+    w = Math.max(w, r.getBoundingClientRect().width / scale);
+  });
+  if (w > max) h.style.fontSize = Math.max(24, Math.floor(36 * max / w)) + 'px';
+}
+function renderNow() {
+  const s = STATIONS[st.cur];
+  $('#headline').innerHTML = s.lines.map(l => '<span>' + l + '</span>').join('');
+  fitHeadline();
+  $('#prog').textContent = s.prog;
+  $('#genre').textContent = s.genre;
+  $('#sbSt').textContent = s.lines.join(' ');
+  renderTally();
+  $$('#inStations .row').forEach(r => {
+    const on = +r.dataset.idx === st.cur;
+    r.classList.toggle('cur', on);
+    const air = r.querySelector('.air');
+    if (air) air.style.display = (on && st.playing) ? 'inline' : 'none';
+  });
+}
+function renderTally() {
+  const t = $('#tally');
+  if (st.connecting) { t.className = 'tally paused'; $('#tallyTxt').textContent = 'TUNING'; }
+  else if (st.playing) { t.className = 'tally'; $('#tallyTxt').textContent = 'ON AIR'; }
+  else { t.className = 'tally paused'; $('#tallyTxt').textContent = 'PAUSED'; }
+  const sb = $('#sbAir');
+  sb.classList.toggle('paused', !st.playing);
+  sb.querySelector('span').textContent = st.playing ? 'ON AIR' : 'PAUSED';
+  $('#icPlay').style.display  = st.playing ? 'none' : '';
+  $('#icPause').style.display = st.playing ? '' : 'none';
+  $('#bPlay').disabled = st.connecting;
+}
+
+/* ---------------- connect / error ---------------- */
+let conTimer = null;
+function startConnect() {
+  hideVol();
+  $('#ovErr').classList.remove('on');
+  const s = STATIONS[st.cur];
+  $('#conCode').textContent = s.code;
+  $('#conName').textContent = s.name;
+  $('#conLbl').textContent = 'Connecting';
+  st.connecting = true; st.playing = false;
+  $('#ovCon').classList.add('on');
+  renderNow();
+  clearTimeout(conTimer);
+  conTimer = setTimeout(() => {
+    st.connecting = false;
+    $('#ovCon').classList.remove('on');
+    if (st.wifiPow !== 'on' || !st.wifiSsid) {
+      showError();
+    } else if (st.failNext) {
+      st.failNext = false;
+      $$('#chipSim .chip').forEach(c => c.classList.toggle('on', c.dataset.s === 'failnext' && st.failNext));
+      showError();
+    } else {
+      st.playing = true; renderNow();
+    }
+  }, 1600);
+}
+function cancelConnect() {
+  clearTimeout(conTimer); st.connecting = false;
+  $('#ovCon').classList.remove('on'); renderNow();
+}
+function showError() {
+  clearTimeout(conTimer); st.connecting = false;
+  $('#ovCon').classList.remove('on');
+  st.playing = false; renderNow();
+  $('#errNm').textContent = STATIONS[st.cur].name;
+  $('#errS').textContent = st.wifiPow !== 'on'
+    ? 'Wi-Fi is off — enable it in Settings'
+    : !st.wifiSsid ? 'No network — join one in Settings → Wi-Fi'
+    : 'The station did not respond';
+  $('#errS').style.cursor = (st.wifiPow !== 'on' || !st.wifiSsid)
+    ? 'pointer' : '';
+  $('#ovErr').classList.add('on');
+}
+
+/* no-network hint: tapping the subtitle opens Wi-Fi — same behavior as
+ * the device firmware's error-screen hint line */
+$('#errS').addEventListener('click', () => {
+  if (st.wifiPow !== 'on' || !st.wifiSsid) {
+    $('#ovErr').classList.remove('on');
+    setView('wifi');
+  }
+});
+function selectStation(i, connect) {
+  st.cur = ((i % NS) + NS) % NS;
+  animateRot(-st.cur * N);
+  renderNow(); save();
+  if (connect !== false && st.view === 'now') startConnect();
+}
+const step = d => selectStation(st.cur + d);
+
+/* ---------------- volume ---------------- */
+let volTimer = null, volDrag = false;
+const segs = [];
+(function buildVol() {
+  const g = $('#volSegs'), NSVG = 'http://www.w3.org/2000/svg';
+  for (let k = 0; k < 25; k++) {
+    const a = (120 + k * 5) * Math.PI / 180;
+    const ln = document.createElementNS(NSVG, 'line');
+    ln.setAttribute('x1', (C + 136 * Math.sin(a)).toFixed(2));
+    ln.setAttribute('y1', (C - 136 * Math.cos(a)).toFixed(2));
+    ln.setAttribute('x2', (C + 160 * Math.sin(a)).toFixed(2));
+    ln.setAttribute('y2', (C - 160 * Math.cos(a)).toFixed(2));
+    ln.setAttribute('class', 'seg');
+    g.appendChild(ln); segs.push(ln);
+  }
+})();
+function paintVol() {
+  $('#volNum').textContent = st.vol;
+  /* seg i sits at theta 120+i*5 (right end -> left end), its value = 100 - i*(100/24) */
+  segs.forEach((s, i) => s.classList.toggle('on',
+    st.vol >= 100 - i * (100 / (segs.length - 1)) - 0.001));
+}
+function openVol() {
+  $('#ovVol').classList.add('on'); paintVol(); armVolHide();
+}
+function hideVol() { $('#ovVol').classList.remove('on'); clearTimeout(volTimer); }
+function armVolHide() { clearTimeout(volTimer); volTimer = setTimeout(hideVol, 2600); }
+function setVol(v) {
+  st.vol = Math.max(0, Math.min(100, Math.round(v)));
+  paintVol(); armVolHide(); save();
+}
+
+/* ---------------- lists ---------------- */
+function buildStationList() {
+  const inEl = $('#inStations'); inEl.innerHTML = '';
+  let sec = null;
+  STATIONS.forEach((s, i) => {
+    if (s.sec !== sec) {
+      sec = s.sec;
+      const d = document.createElement('div');
+      d.className = 'sec'; d.textContent = sec;
+      inEl.appendChild(d);
+    }
+    const r = document.createElement('div');
+    r.className = 'row' + (i === st.cur ? ' cur' : '');
+    r.dataset.idx = i;
+    r.innerHTML = '<div class="mono40">' + s.code + '</div>' +
+      '<div class="txt"><div class="nm"><span class="nmtxt">' + s.name +
+      '</span><span class="air">ON AIR</span></div>' +
+      '<div class="sub">' + s.genre + '</div></div>';
+    inEl.appendChild(r);
+  });
+}
+let listY = 0;
+function listBounds() {
+  const w = $('#winStations').clientHeight, h = $('#inStations').scrollHeight;
+  return Math.min(0, w - h);
+}
+function scrollList(y) {
+  const b = listBounds();
+  listY = Math.max(b, Math.min(0, y));
+  $('#inStations').style.transform = 'translateY(' + listY + 'px)';
+  const el = $('#inStations'), win = $('#winStations'), bar = $('#barStations');
+  if (!bar || !win) return;
+  const h = el.offsetHeight, vis = win.clientHeight;
+  if (h > vis + 4) {
+    bar.style.opacity = '1';
+    const thh = Math.max(26, vis * vis / h);
+    $('#thumbStations').style.height = thh + 'px';
+    const frac = (h - vis) ? (-listY) / (h - vis) : 0;
+    $('#thumbStations').style.top = (frac * (vis - thh)) + 'px';
+  } else bar.style.opacity = '0';
+}
+
+/* ---------------- brightness / sleep ---------------- */
+function paintBright() {
+  document.documentElement.style.setProperty('--bright', st.bright);
+  const f = (st.bright - .5) / .5;
+  $('#brFill').style.width = (f * 100) + '%';
+  $('#brKnob').style.left  = (f * 100) + '%';
+  $('#brPct').textContent = Math.round(st.bright * 100) + '%';
+}
+function paintSleep() {
+  const v = $('#sleepVal');
+  v.textContent = st.sleep === 'OFF' ? 'OFF' : st.sleep + ' MIN';
+  v.classList.toggle('amber', st.sleep !== 'OFF');
+}
+function paintTheme() {
+  document.documentElement.dataset.theme = st.theme;
+  $$('#chipTheme .chip').forEach(c => c.classList.toggle('on', c.dataset.t === st.theme));
+}
+
+/* ---------------- clock + waveform ---------------- */
+function tickClock() {
+  const d = new Date(), p = n => String(n).padStart(2, '0');
+  const hm = p(d.getHours()) + ':' + p(d.getMinutes());
+  $('#clock').textContent = hm;
+  $('#sbTime').textContent = hm;
+  $('#sbDate').textContent =
+    d.toLocaleDateString('en-US', { weekday:'short' }) + ' · ' +
+    d.toLocaleDateString('en-US', { month:'short', day:'numeric' });
+}
+let wt = 0, wsmooth = 0;
+function waveLoop() {
+  const el = $('#waveLine');
+  const amp = st.playing ? (6.5 + st.vol / 100 * 9.5) : 0.7;
+  wsmooth += (amp - wsmooth) * 0.06;
+  wt += 0.055;
+  let pts = '';
+  for (let i = 0; i <= 72; i++) {
+    const x = i / 72 * 240;
+    const env = RM ? .35 : (Math.sin(x / 240 * Math.PI) * .75 + .25);
+    const y = 20 - (Math.sin(x * .13 + wt * 3.1) +
+                    Math.sin(x * .055 - wt * 2.0) * .62 +
+                    Math.sin(x * .21 + wt * 1.35) * .38) * wsmooth * env;
+    pts += x.toFixed(1) + ',' + y.toFixed(1) + ' ';
+  }
+  el.setAttribute('points', pts);
+  requestAnimationFrame(waveLoop);
+}
+
+/* ---------------- pointer gestures ---------------- */
+const screen = $('#screen');
+let gp = null;
+const local = e => {
+  const r = screen.getBoundingClientRect(), k = 466 / r.width;
+  return { x:(e.clientX - r.left) * k, y:(e.clientY - r.top) * k, r };
+};
+const angOf = (x, y) => Math.atan2(x - C, -(y - C)) * 180 / Math.PI;
+
+function ripple(x, y) {
+  const d = document.createElement('div');
+  d.className = 'rip'; d.style.left = x + 'px'; d.style.top = y + 'px';
+  screen.appendChild(d); setTimeout(() => d.remove(), 480);
+}
+
+screen.addEventListener('pointerdown', e => {
+  if (e.target.closest('.ov')) return;
+  const p = local(e);
+  if (st.view === 'standby') { ripple(p.x, p.y); setView('now'); return; }
+  if (st.view !== 'now') return;
+  if (e.target.closest('button')) return;
+  gp = { x0:p.x, y0:p.y, r:p.r, rot0:rot, mode:null, x:p.x, y:p.y };
+  ripple(p.x, p.y);
+  screen.setPointerCapture(e.pointerId);
+});
+screen.addEventListener('pointermove', e => {
+  if (!gp) return;
+  const p = local(e);
+  gp.x = p.x; gp.y = p.y;
+  const dx = p.x - gp.x0, dy = p.y - gp.y0;
+  if (!gp.mode && Math.hypot(dx, dy) > 9) {
+    const rx = gp.r.left + gp.r.width / 2, ry = gp.r.top + gp.r.height / 2;
+    const ex = e.clientX - rx, ey = e.clientY - ry;
+    const dist = Math.hypot(ex, ey) / (gp.r.width / 2) * 233;
+    gp.mode = (Math.abs(dx) > Math.abs(dy) * 1.15 || dist > 176) ? 'dial' : 'v';
+  }
+  if (gp.mode === 'dial') {
+    const r = gp.r, k = r.width / 466;
+    const cx = r.left + r.width / 2, cy = r.top + r.height / 2;
+    const a0 = Math.atan2(gp.x0 * k + r.left - cx, -(gp.y0 * k + r.top - cy));
+    const a1 = Math.atan2(e.clientX - cx, -(e.clientY - cy));
+    let d = (a1 - a0) * 180 / Math.PI;
+    if (d > 180) d -= 360; if (d < -180) d += 360;
+    if (rotAnim) cancelAnimationFrame(rotAnim);
+    rot = gp.rot0 + d; applyDial();
+  } else if (gp.mode === 'v') {
+    const t = Math.max(-48, Math.min(48, dy * .6));
+    $('#vNow').style.transform = 'translateY(' + t + 'px)';
+    $('#vNow').style.opacity = String(1 - Math.abs(t) / 130);
+  }
+});
+function endGesture(e) {
+  if (!gp) return;
+  const dx = (gp.x - gp.x0), dy = (gp.y - gp.y0);
+  const mode = gp.mode;
+  gp = null;
+  $('#vNow').style.transform = ''; $('#vNow').style.opacity = '';
+  if (mode === 'dial') {
+    const near = ((Math.round(-rot / N) % NS) + NS) % NS;
+    animateRot(-near * N);
+    if (near !== st.cur) setTimeout(() => selectStation(near), 260);
+  } else if (mode === 'v') {
+    if (dy < -64) setView('stations');
+    else if (dy > 64) setView('settings');
+  }
+}
+screen.addEventListener('pointerup', endGesture);
+screen.addEventListener('pointercancel', endGesture);
+
+screen.addEventListener('wheel', e => {
+  e.preventDefault();
+  if ($('#ovVol').classList.contains('on')) { setVol(st.vol - Math.sign(e.deltaY) * 5); return; }
+  if (st.view === 'now') {
+    const now = performance.now();
+    if (now - (screen._lastWheel || 0) > 380) { screen._lastWheel = now; step(e.deltaY > 0 ? 1 : -1); }
+  } else if (st.view === 'stations' || st.view === 'settings') {
+    scrollList(listY - e.deltaY * .8);
+  } else if (st.view === 'wifi') {
+    scrollW(wifiY - e.deltaY * .8);
+  }
+}, { passive:false });
+
+/* stations list drag / tap */
+(function listDrag() {
+  const win = $('#winStations');
+  let p = null;
+  win.addEventListener('pointerdown', e => {
+    /* capture retargets later events to win — remember the row NOW */
+    p = { y0:e.clientY, moved:0, last:null,
+          row:e.target.closest('.row[data-idx]') };
+    win.setPointerCapture(e.pointerId); win.classList.add('drag');
+  });
+  win.addEventListener('pointermove', e => {
+    if (!p) return;
+    const dy = e.clientY - p.y0;
+    p.moved = Math.max(p.moved, Math.abs(dy));
+    if (p.moved > 6) {
+      if (p.last === null) p.last = e.clientY;
+      scrollList(listY + (e.clientY - p.last));
+      p.last = e.clientY;
+    }
+  });
+  const up = e => {
+    if (!p) return;
+    win.classList.remove('drag');
+    const moved = p.moved; const row = p.row; p = null;
+    if (moved < 8 && row) { setView('now'); selectStation(+row.dataset.idx); }
+  };
+  win.addEventListener('pointerup', up);
+  win.addEventListener('pointercancel', () => { p = null; win.classList.remove('drag'); });
+})();
+
+/* ---------------- controls ---------------- */
+$('#bPlay').addEventListener('click', () => {
+  if (st.connecting) return;
+  if (!st.playing) startConnect(); else { st.playing = false; renderNow(); }
+});
+$('#bPrev').addEventListener('click', () => step(-1));
+$('#bNext').addEventListener('click', () => step(1));
+$('#bList').addEventListener('click', () => setView('stations'));
+$('#bVol').addEventListener('click', openVol);
+$$('#vStations .vhead button, #vSettings .vhead button, #vWifi .vhead button[data-go]')
+  .forEach(b => b.addEventListener('click', () => setView(b.dataset.go)));
+
+$('#ovCon').addEventListener('click', cancelConnect);
+$('#errRetry').addEventListener('click', e => { e.stopPropagation(); startConnect(); });
+$('#errSkip').addEventListener('click', e => { e.stopPropagation(); step(1); });
+
+/* volume overlay pointer */
+(function volPointer() {
+  const ov = $('#ovVol');
+  let on = false;
+  const fromEvent = e => {
+    const r = screen.getBoundingClientRect(), k = 466 / r.width;
+    const x = (e.clientX - r.left) * k, y = (e.clientY - r.top) * k;
+    let a = angOf(x, y);
+    if (a < 0) a += 360;
+    const dist = Math.hypot(x - C, y - C);
+    if (a >= 110 && a <= 250 && dist > 100 && dist < 200)
+      setVol((240 - Math.max(120, Math.min(240, a))) / 120 * 100);
+    else return false;
+    return true;
+  };
+  ov.addEventListener('pointerdown', e => {
+    if (fromEvent(e)) { on = true; ov.setPointerCapture(e.pointerId); }
+    else on = false;
+  });
+  ov.addEventListener('pointermove', e => { if (on) fromEvent(e); });
+  ov.addEventListener('pointerup', e => { if (!on) hideVol(); on = false; });
+})();
+
+/* settings rows */
+(function settings() {
+  const tr = $('#brTrack');
+  let drag = false;
+  const set = e => {
+    const r = tr.getBoundingClientRect();
+    const f = Math.max(0, Math.min(1, (e.clientX - r.left) / r.width));
+    st.bright = .5 + f * .5; paintBright(); save();
+  };
+  tr.addEventListener('pointerdown', e => { drag = true; tr.setPointerCapture(e.pointerId); set(e); });
+  tr.addEventListener('pointermove', e => { if (drag) set(e); });
+  tr.addEventListener('pointerup', () => drag = false);
+  $('#rowSleep').addEventListener('click', () => {
+    const opts = ['OFF', '15', '30', '60'];
+    st.sleep = opts[(opts.indexOf(st.sleep) + 1) % opts.length];
+    paintSleep(); save();
+  });
+})();
+
+/* ---------------- wi-fi management ----------------
+   Maps 1:1 to ESP-IDF: scan   -> esp_wifi_scan_start() + WIFI_EVENT_SCAN_DONE
+                        join   -> esp_wifi_connect() (auth fail -> STA_DISCONNECTED)
+                        save   -> NVS (here: localStorage)
+   Client mode only: joins routers AND phone hotspots like any WLAN manager. */
+const NETS = [
+  { ssid:'Lab_2.4G',       sec:'WPA2', lvl:3 },
+  { ssid:'Studio-Hotspot', sec:'WPA2', lvl:3, hot:true },
+  { ssid:'Pixel-Hotspot',  sec:'WPA2', lvl:2, hot:true },
+  { ssid:'TP-Link_A8F2',   sec:'WPA2', lvl:2 },
+  { ssid:'Neighbour-Free', sec:'Open', lvl:2, open:true },
+  { ssid:'Home-5G',        sec:'WPA2', lvl:3, five:true },
+  { ssid:'Cafe-Guest',     sec:'Open', lvl:1, open:true },
+  { ssid:'iPhone-Mei',     sec:'WPA2', lvl:1, hot:true },
+];
+let scanT = null, passNet = null, passVal = '', kbCaps = false, kbNum = false, wifiY = 0;
+const BARS = '<svg class="bars" width="17" height="13" viewBox="0 0 17 13">' +
+  '<rect x="0" y="8" width="3.4" height="5" rx="1"/>' +
+  '<rect x="5.6" y="5" width="3.4" height="8" rx="1"/>' +
+  '<rect x="11.2" y="0" width="3.4" height="13" rx="1"/></svg>';
+const LOCK = '<svg width="11" height="13" viewBox="0 0 12 14" fill="currentColor">' +
+  '<path d="M6 0a3.4 3.4 0 0 0-3.4 3.4V5H1.4A1.4 1.4 0 0 0 0 6.4v6.2A1.4 1.4 0 0 0 1.4 14h9.2a1.4 1.4 0 0 0 1.4-1.4V6.4A1.4 1.4 0 0 0 10.6 5H9.4V3.4A3.4 3.4 0 0 0 6 0zm0 1.6c1 0 1.8.8 1.8 1.8V5H4.2V3.4c0-1 .8-1.8 1.8-1.8z"/></svg>';
+
+function paintWifi() {
+  const on = st.wifiPow === 'on';
+  $('#wlanSw').classList.toggle('on', on);
+  const conn = on && st.wifiSsid;
+  $('#wlanSub').textContent = conn
+    ? 'Connected · ' + st.wifiSsid : on ? 'On · no network' : 'Off';
+  $('#wifiVal').textContent = conn ? st.wifiSsid : on ? 'None' : 'Off';
+  $('#wifiSub').textContent = conn
+    ? 'Connected · 2.4 GHz'
+    : on ? 'On · 2.4 GHz' : '2.4 GHz · 802.11 b/g/n';
+  const ic = $('#wifiIcon');
+  if (ic) ic.style.opacity = on ? '1' : '.3';
+}
+function showWArea(which) {
+  ['scan', 'off'].forEach(w =>
+    $('#wifi' + w[0].toUpperCase() + w.slice(1) + 'Area').classList.toggle('on', which === w));
+  $('#winWifi').style.display = which === 'list' ? '' : 'none';
+}
+function doScan() {
+  showWArea('scan');
+  clearTimeout(scanT);
+  scanT = setTimeout(() => { showWArea('list'); renderNets(); }, 1100);
+}
+function renderNets() {
+  const nets = NETS.slice();
+  if (st.wifiPow === 'on') {
+    const ci = nets.findIndex(n => n.ssid === st.wifiSsid);
+    if (ci > 0) nets.unshift(nets.splice(ci, 1)[0]);
+  }
+  $('#inWifi').innerHTML = nets.map(n => {
+    const cur = n.ssid === st.wifiSsid && st.wifiPow === 'on';
+    const cls = 'row nw lvl' + n.lvl + (cur ? ' cur' : '') + (n.five ? ' dim' : '');
+    let right;
+    if (cur) right = '<span class="val ok">CONNECTED</span>';
+    else if (n.five) right = '<span class="val bad">5 GHZ</span>';
+    else if (n.open) right = '<span class="val">OPEN</span>';
+    else right = '<span class="val" style="color:#7E7B73">' + LOCK + '</span>';
+    return '<div class="' + cls + '" data-ssid="' + n.ssid + '">' + BARS +
+      '<div class="txt"><div class="nm"><span class="nmtxt">' + n.ssid + '</span>' +
+      (n.hot ? '<span class="ntag">hotspot</span>' : '') + '</div>' +
+      '<div class="sub">' + (n.five ? '5 GHz · unsupported' : n.sec + ' · 2.4 GHz') +
+      '</div></div>' + right + '</div>';
+  }).join('');
+  scrollW(0);
+}
+function scrollW(y) {
+  const el = $('#inWifi'), win = $('#winWifi');
+  const h = el.offsetHeight, vis = win.clientHeight;
+  if (!h || !vis) return;
+  wifiY = Math.max(Math.min(0, vis - h), Math.min(0, y));
+  el.style.transform = 'translateY(' + wifiY + 'px)';
+  const bar = $('#barWifi');
+  if (h > vis + 4) {
+    bar.style.opacity = '1';
+    const thh = Math.max(26, vis * vis / h);
+    $('#thumbWifi').style.height = thh + 'px';
+    $('#thumbWifi').style.top = ((-wifiY) / (h - vis) * (vis - thh)) + 'px';
+  } else bar.style.opacity = '0';
+}
+function enterWifi() {
+  paintWifi();
+  if (st.wifiPow !== 'on') showWArea('off');
+  else doScan();
+}
+function toast(msg) {
+  const t = $('#wifiToast');
+  t.textContent = msg; t.classList.add('on');
+  clearTimeout(t._h);
+  t._h = setTimeout(() => t.classList.remove('on'), 2400);
+}
+
+/* password entry (on-device keyboard) */
+let passShow = false, passPeek = false;   /* eye toggle / press-hold peek */
+function openPass(n) {
+  passNet = n; passVal = ''; kbCaps = false; kbNum = false;
+  passShow = false; passPeek = false;
+  $('#passSsid').innerHTML = (n.open ? '' : LOCK) + n.ssid;
+  $('#passErr').classList.remove('on');
+  paintPass(); renderKb(); $('#ovPass').classList.add('on');
+}
+function closePass() { $('#ovPass').classList.remove('on'); passNet = null; passShow = false; passPeek = false; }
+function paintPass() {
+  const reveal = passShow || passPeek;
+  const el = $('#passDots');
+  el.textContent = reveal ? passVal : (passVal ? '\u2022'.repeat(passVal.length) : '');
+  el.classList.toggle('revealed', reveal);
+  $('#passEye').classList.toggle('show', passShow);
+}
+const KB_L1 = 'qwertyuiop'.split(''), KB_L2 = 'asdfghjkl'.split('');
+const KB_L3 = 'zxcvbnm'.split(''),   KB_D1 = '1234567890'.split('');
+const KB_D2 = '-/;()$&@"'.split(''), KB_D3 = ['.', ',', '?', '!', '"', "'"];
+function renderKb() {
+  const rows = kbNum
+    ? [KB_D1, KB_D2, [...KB_D3, 'BK'], ['MODE', 'SPACE', 'JOIN']]
+    : [KB_L1, KB_L2, ['SHIFT', ...KB_L3, 'BK'], ['MODE', 'SPACE', 'JOIN']];
+  $('#kb').innerHTML = rows.map(r => '<div class="kbrow">' + r.map(k => {
+    if (k === 'SHIFT') return '<button class="key mod wide" data-k="SHIFT"' +
+      (kbCaps ? ' style="color:var(--accent)"' : '') + '>\u21e7</button>';
+    if (k === 'BK') return '<button class="key mod wide" data-k="BK">\u232b</button>';
+    if (k === 'MODE') return '<button class="key mod" data-k="MODE" style="width:50px">' +
+      (kbNum ? 'ABC' : '123') + '</button>';
+    if (k === 'SPACE') return '<button class="key space" data-k="SPACE" ' +
+      'style="font-family:var(--fmono);font-size:9px;color:#6E6C65;letter-spacing:.2em">space</button>';
+    if (k === 'JOIN') return '<button class="key join" data-k="JOIN">JOIN</button>';
+    const disp = (!kbNum && kbCaps) ? k.toUpperCase() : k;
+    return '<button class="key" data-k="' + encodeURIComponent(k) + '">' + disp + '</button>';
+  }).join('') + '</div>').join('');
+}
+function tryJoin() {
+  if (passVal.trim().length < 8) { $('#passErr').classList.add('on'); return; }
+  const n = passNet;
+  closePass();
+  wifiJoin(n);
+}
+function wifiJoin(n) {
+  $('#conCode').textContent = 'WI-FI';
+  $('#conLbl').textContent = 'Joining';
+  $('#conName').textContent = n.ssid;
+  st.connecting = true;
+  $('#ovCon').classList.add('on');
+  renderTally();
+  clearTimeout(conTimer);
+  conTimer = setTimeout(() => {
+    st.connecting = false;
+    $('#ovCon').classList.remove('on');
+    st.wifiPow = 'on'; st.wifiSsid = n.ssid;
+    if (!st.saved.includes(n.ssid)) st.saved.push(n.ssid);
+    save(); renderTally(); paintWifi(); renderNets();
+    toast('CONNECTED \u00b7 ' + n.ssid);
+    if (st.playing) startConnect();   /* stream resumes over the new network */
+  }, 1700);
+}
+function handleNet(n) {
+  if (n.five) { toast('ESP32-S3 supports 2.4 GHz only'); return; }
+  if (n.ssid === st.wifiSsid && st.wifiPow === 'on') { openNet(n); return; }
+  if (st.saved.includes(n.ssid)) { wifiJoin(n); return; }
+  if (n.open) wifiJoin(n); else openPass(n);
+}
+
+/* wifi list drag / tap */
+(function wifiDrag() {
+  const win = $('#winWifi');
+  let p = null;
+  win.addEventListener('pointerdown', e => {
+    /* capture retargets later events to win — remember the row NOW */
+    p = { y0:e.clientY, moved:0, last:null,
+          row:e.target.closest('.row[data-ssid]') };
+    win.setPointerCapture(e.pointerId); win.classList.add('drag');
+  });
+  win.addEventListener('pointermove', e => {
+    if (!p) return;
+    const dy = e.clientY - p.y0;
+    p.moved = Math.max(p.moved, Math.abs(dy));
+    if (p.moved > 6) {
+      if (p.last === null) p.last = e.clientY;
+      scrollW(wifiY + (e.clientY - p.last));
+      p.last = e.clientY;
+    }
+  });
+  const up = e => {
+    if (!p) return;
+    win.classList.remove('drag');
+    const moved = p.moved; const row = p.row; p = null;
+    if (moved < 8 && row) {
+      const n = NETS.find(x => x.ssid === row.dataset.ssid);
+      if (n) handleNet(n);
+    }
+  };
+  win.addEventListener('pointerup', up);
+  win.addEventListener('pointercancel', () => { p = null; win.classList.remove('drag'); });
+})();
+
+/* keyboard interactions */
+$('#kb').addEventListener('click', e => {
+  const b = e.target.closest('.key');
+  if (!b) return;
+  const k = decodeURIComponent(b.dataset.k);
+  if (k === 'SHIFT') { kbCaps = !kbCaps; renderKb(); return; }
+  if (k === 'MODE')  { kbNum = !kbNum;  renderKb(); return; }
+  if (k === 'BK')    { passVal = passVal.slice(0, -1);
+                       $('#passErr').classList.remove('on'); paintPass(); return; }
+  if (k === 'SPACE') { passVal += ' '; paintPass(); return; }
+  if (k === 'JOIN')  { tryJoin(); return; }
+  passVal += (!kbNum && kbCaps) ? k.toUpperCase() : k;
+  $('#passErr').classList.remove('on');
+  paintPass();
+});
+$('#passCancel').addEventListener('click', closePass);
+$('#passEye').addEventListener('click', e => {
+  e.stopPropagation();
+  passShow = !passShow;
+  paintPass();
+});
+/* peek: press-and-hold anywhere on the value field reveals while held */
+(function passPeekHandlers() {
+  const box = document.querySelector('.pass-box');
+  const end = () => { if (passPeek) { passPeek = false; paintPass(); } };
+  box.addEventListener('pointerdown', e => {
+    if (e.target.closest('.pass-eye')) return;
+    passPeek = true; paintPass();
+  });
+  box.addEventListener('pointerup', end);
+  box.addEventListener('pointercancel', end);
+  box.addEventListener('pointerleave', end);
+})();
+
+/* connected-network detail: disconnect / forget */
+let netCur = null;
+function openNet(n) {
+  netCur = n;
+  $('#netSsid').textContent = n.ssid;
+  $('#netMeta').textContent = 'Connected \u00b7 ' + n.sec + ' \u00b7 ' +
+    (n.hot ? 'phone hotspot' : '2.4 GHz');
+  $('#ovNet').classList.add('on');
+}
+function closeNet() { $('#ovNet').classList.remove('on'); netCur = null; }
+function dropConnection(kind) {
+  if (!netCur) return;
+  const was = st.wifiSsid;
+  st.wifiSsid = ''; st.playing = false;
+  if (kind === 'forget') st.saved = st.saved.filter(s => s !== was);
+  closeNet(); save(); paintWifi(); renderNets(); renderNow();
+  toast((kind === 'forget' ? 'FORGOT \u00b7 ' : 'DISCONNECTED \u00b7 ') + was);
+}
+$('#netClose').addEventListener('click', closeNet);
+$('#netDisconnect').addEventListener('click', () => dropConnection('disconnect'));
+$('#netForget').addEventListener('click', () => dropConnection('forget'));
+
+/* one WLAN page: master switch + scan list — joins routers and phone hotspots */
+function setWifiPower(on) {
+  st.wifiPow = on ? 'on' : 'off';
+  if (!on) {
+    clearTimeout(scanT); showWArea('off');
+    if (st.playing) { st.playing = false; renderNow(); }
+  } else doScan();
+  save(); paintWifi();
+}
+$('#wlanRow').addEventListener('click', () => setWifiPower(st.wifiPow !== 'on'));
+$('#wifiOnBtn').addEventListener('click', () => setWifiPower(true));
+$('#wifiRescan').addEventListener('click', () => {
+  if (st.wifiPow === 'on') doScan();
+  else toast('Turn Wi-Fi on first');
+});
+$('#rowWifi').addEventListener('click', () => setView('wifi'));
+
+/* ---------------- hardware buttons ---------------- */
+$('#btnPwr').addEventListener('click', () =>
+  setView(st.view === 'standby' ? 'now' : 'standby'));
+$('#btnBoot').addEventListener('click', replayBoot);
+
+/* ---------------- panel ---------------- */
+$$('#chipScreen .chip').forEach(c => c.addEventListener('click', () => {
+  const v = c.dataset.v;
+  if (v === 'boot') return replayBoot();
+  setView(v, true);
+  if (v === 'now') { cancelConnect(); $('#ovErr').classList.remove('on'); }
+}));
+$$('#chipSim .chip').forEach(c => c.addEventListener('click', () => {
+  const s = c.dataset.s;
+  if (s === 'failnext') {
+    st.failNext = !st.failNext;
+    c.classList.toggle('on', st.failNext);
+    return;
+  }
+  setView('now', true);
+  if (s === 'connect') startConnect(); else showError();
+}));
+$$('#chipTheme .chip').forEach(c => c.addEventListener('click', () => {
+  st.theme = c.dataset.t; paintTheme(); save();
+}));
+
+/* keyboard (desktop review) */
+document.addEventListener('keydown', e => {
+  if (e.key === 'ArrowRight') step(1);
+  else if (e.key === 'ArrowLeft') step(-1);
+  else if (e.key === ' ') { e.preventDefault(); $('#bPlay').click(); }
+  else if (e.key === 'ArrowUp') setView('stations');
+  else if (e.key === 'ArrowDown') setView('settings');
+  else if (e.key.toLowerCase() === 'm') setView('standby');
+});
+
+/* ---------------- boot sequence ---------------- */
+let bootTimer = null;
+function replayBoot() {
+  clearTimeout(bootTimer);
+  hideVol(); $('#ovErr').classList.remove('on'); $('#ovCon').classList.remove('on');
+  st.playing = false; st.connecting = false;
+  setView('boot', true);
+  rot = -st.cur * N; applyDial();
+  bootTimer = setTimeout(() => { setView('now', true); startConnect(); },
+                         RM ? 350 : 1500);
+}
+
+/* ---------------- fit to viewport ---------------- */
+function fit() {
+  const availH = innerHeight - 190;            /* header + caption + padding */
+  const availW = innerWidth - 68 - (innerWidth > 980 ? 236 + 56 + 40 : 0);
+  const s = Math.min(1, availH / 512, Math.max(.55, availW / 512));
+  window.__scale = s;
+  const dev = $('#device'), f = $('#fit');
+  dev.style.transform = 'scale(' + s + ')';
+  f.style.width = (512 * s) + 'px';
+  f.style.height = (512 * s) + 'px';
+}
+addEventListener('resize', fit);
+
+/* ---------------- init ---------------- */
+paintTheme(); paintBright(); paintSleep(); paintVol(); paintWifi();
+buildStationList(); renderNow(); tickClock(); setInterval(tickClock, 1000);
+rot = -st.cur * N; lastNear = -1; applyDial();
+fit(); waveLoop(); replayBoot();
+
+/* review/test hooks */
+window.R = {
+  st, setView, selectStation, step, startConnect, showError, replayBoot,
+  setVol, setTheme: t => { st.theme = t; paintTheme(); save(); },
+  errors: () => window.__errs
+};
+})();
+</script>
+</body>
+</html>
