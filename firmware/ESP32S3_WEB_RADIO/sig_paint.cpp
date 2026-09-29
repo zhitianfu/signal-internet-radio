@@ -144,25 +144,30 @@ void SigUI::paintDial(bool full) {
 void SigUI::paintNow() {
   /* ---- status line (y54 h24, gap 11, centered) ---- */
   String hm = disp->getCurrentTime();
-  char batt[8] = "78%";
+  char batt[8];
+  if (battPct >= 0) snprintf(batt, sizeof(batt), "%d%%", battPct);
+  else              strlcpy(batt, "--%", sizeof(batt));
   float ls = 13 * 0.0f;                    /* no tracking on status */
   float wc = tWidth(F_MONO_500_13, hm.c_str(), ls);
   float wb = tWidth(F_MONO_500_13, batt, ls);
   float total = 17 + 11 + wc + 11 + (25 + 4 + wb);
   float x = (466 - total) / 2;
   float cy = 54 + 12;
-  /* wifi icon: 3 bars, third always .45, whole icon .3 when off */
-  uint8_t a1 = wcPowered() ? 15 : 5;
-  uint16_t b1 = blendC(0, C_STATUS, a1);
-  uint16_t b3 = blendC(0, C_STATUS, (uint8_t)(a1 * 0.45f));
-  cv->fillRoundRect((int)x, (int)(cy - 6.5f + 8), 3, 5, 1, b1);
-  cv->fillRoundRect((int)(x + 5.6f), (int)(cy - 6.5f + 5), 3, 8, 1, b1);
-  cv->fillRoundRect((int)(x + 11.2f), (int)(cy - 6.5f), 3, 13, 1, b3);
+  /* wifi icon: real signal level (sigLvl: -1 off · 0 no link · 1..3 bars).
+   * Bars below the level are full, the rest keep the .45 hint look. */
+  uint16_t barA[3];
+  for (int i = 0; i < 3; i++) {
+    uint8_t a = (sigLvl < 0) ? 5 : (i < sigLvl ? 15 : (uint8_t)(15 * 0.45f));
+    barA[i] = blendC(0, C_STATUS, a);
+  }
+  cv->fillRoundRect((int)x, (int)(cy - 6.5f + 8), 3, 5, 1, barA[0]);
+  cv->fillRoundRect((int)(x + 5.6f), (int)(cy - 6.5f + 5), 3, 8, 1, barA[1]);
+  cv->fillRoundRect((int)(x + 11.2f), (int)(cy - 6.5f), 3, 13, 1, barA[2]);
   float xc = x + 17 + 11;
   tDraw(F_MONO_500_13, hm.c_str(), xc, wc, cy - 13 / 2.0f, C_STATUS, 0,
         ls, 0, 1);
   float xb = xc + wc + 11;
-  icBattery(xb, cy - 6, C_STATUS);
+  icBattery(xb, cy - 6, C_STATUS, battPct);
   tDraw(F_MONO_500_13, batt, xb + 25 + 4, wb, cy - 13 / 2.0f, C_STATUS, 0,
         ls, 0, 1);
 

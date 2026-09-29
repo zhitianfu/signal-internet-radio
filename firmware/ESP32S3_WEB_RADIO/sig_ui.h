@@ -94,6 +94,7 @@ private:
   void dumpFrame();                   // 466x466 PPM over USB CDC
   void paintView();               // current view only (no dial)
   void tickTimers();
+  bool refreshStatus();            // read AXP2101 % + RSSI bars (1 s)
   void onTouch();
   void setView(uint8_t v);
   void setOvl(uint8_t o);
@@ -170,7 +171,7 @@ private:
 
   /* vector icons (exact SVG geometry from the prototype markup) */
   void icWifiBars(float x, float y, uint16_t c, float thirdA = 15);
-  void icBattery(float x, float y, uint16_t c);
+  void icBattery(float x, float y, uint16_t c, int pct = -1);
   void icList(float cx, float cy, uint16_t c);
   void icPrev(float cx, float cy, uint16_t c);
   void icPlay(float cx, float cy, uint16_t c);
@@ -212,6 +213,10 @@ private:
   float viewShiftY = 0;                          // vertical swipe follow
   bool playing = false, connecting = false;
   uint32_t conT0 = 0; bool conForWifi = false;
+  /* live status line: battery % (AXP2101) + Wi-Fi bars (RSSI) */
+  int8_t battPct = -1;                // battery percent · -1 = unknown
+  int8_t sigLvl = -2;                 // bars · -2 unread, -1 off, 0 no link, 1..3
+  uint8_t pmuInit = 0;                // 0 not tried · 1 online · 2 absent
   uint8_t vol = 62; float bright = 1.0f;
   uint8_t sleepIdx = 0;                          // 0 OFF 1=15 2=30 3=60
   bool sleepArmed = false; uint32_t sleepT0 = 0;

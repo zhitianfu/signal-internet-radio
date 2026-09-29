@@ -750,9 +750,9 @@ html[data-theme="broadsheet"] .chip.on { background: rgba(240,238,232,.08); }
                          style="vertical-align:-1px;margin-right:4px">
                       <rect x=".6" y=".6" width="21" height="10.8" rx="3"
                             fill="none" stroke="currentColor" stroke-width="1.2" opacity=".6"/>
-                      <rect x="2.4" y="2.4" width="15" height="7.2" rx="1.6" fill="currentColor"/>
+                      <rect id="battFill" x="2.4" y="2.4" width="15" height="7.2" rx="1.6" fill="currentColor"/>
                       <path d="M23.2 4.2v3.6a2 2 0 0 0 0-3.6z" fill="currentColor" opacity=".6"/>
-                    </svg>78%</span>
+                    </svg><span id="battPct">--%</span></span>
                 </div>
 
                 <div class="tally" id="tally"><i></i><span id="tallyTxt">ON AIR</span></div>
@@ -1357,7 +1357,41 @@ function tickClock() {
   $('#sbDate').textContent =
     d.toLocaleDateString('en-US', { weekday:'short' }) + ' · ' +
     d.toLocaleDateString('en-US', { month:'short', day:'numeric' });
+  applyStat();
 }
+
+/* live status — real host battery % + the mock network's signal level.
+   Mirrors the firmware (AXP2101 voltage % / WiFi.RSSI bars); no hardcodes. */
+let battPctLive = null;
+function applyBatt(p) {
+  const t = $('#battPct'), f = $('#battFill');
+  if (!t || !f) return;
+  if (p === null || p === undefined || isNaN(p)) {
+    t.textContent = '--%'; f.setAttribute('width', 0); return;
+  }
+  p = Math.max(0, Math.min(100, Math.round(p)));
+  t.textContent = p + '%';
+  f.setAttribute('width', Math.max(p > 0 ? 1 : 0, 19.2 * p / 100).toFixed(1));
+}
+function wifiLevel() {
+  if (st.wifiPow !== 'on') return -1;
+  if (!st.wifiSsid) return 0;
+  const n = NETS.find(x => x.ssid === st.wifiSsid);
+  return n ? (n.lvl || 2) : 2;
+}
+function applyWifi() {
+  const lvl = wifiLevel(), svg = $('#wifiIcon');
+  if (!svg) return;
+  [...svg.querySelectorAll('rect')].forEach((r, i) =>
+    r.setAttribute('opacity', lvl < 0 ? 0.3 : (i < lvl ? 1 : 0.45)));
+}
+function applyStat() { applyBatt(battPctLive); applyWifi(); }
+if (navigator.getBattery) {
+  navigator.getBattery().then(b => {
+    const u = () => { battPctLive = b.level * 100; applyBatt(battPctLive); };
+    u(); b.addEventListener('levelchange', u); b.addEventListener('chargingchange', u);
+  }).catch(() => applyBatt(null));
+} else applyBatt(null);
 let wt = 0, wsmooth = 0;
 function waveLoop() {
   const el = $('#waveLine');

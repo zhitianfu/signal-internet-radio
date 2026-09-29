@@ -2,6 +2,10 @@
  * Layout numbers come 1:1 from the 004-signal prototype CSS. */
 #include "sig_ui.h"
 #include "sig/signal_fonts_data.h"   // glyph data (sig_ui.cpp is the only TU with data)
+#include "config.h"                  // TOUCH_SDA/SCL + XPOWERS_CHIP_AXP2101
+#include "XPowersLib.h"              // AXP2101 battery monitor (chip typed by config.h)
+#include <WiFi.h>                    // RSSI for the signal bars
+#include <Wire.h>
 #include <Preferences.h>
 #include <esp_heap_caps.h>
 #include <math.h>
@@ -225,9 +229,14 @@ void SigUI::icWifiBars(float x, float y, uint16_t c, float thirdA) {
   }
   cv->fillRoundRect((int)(x + 11.2f), (int)y, 3, 13, 1, cc);
 }
-void SigUI::icBattery(float x, float y, uint16_t c) {
+void SigUI::icBattery(float x, float y, uint16_t c, int pct) {
   cv->drawRoundRect((int)(x + .6f), (int)(y + .6f), 21, 11, 3, c);
-  cv->fillRoundRect((int)(x + 2.4f), (int)(y + 2.4f), 15, 7, 2, c);
+  if (pct > 0) {                    // fill = real charge (0/unknown = empty)
+    float wf = 19.2f * pct / 100.0f;
+    if (wf < 1.0f) wf = 1.0f;
+    if (wf > 19.2f) wf = 19.2f;
+    cv->fillRoundRect((int)(x + 2.4f), (int)(y + 2.4f), (int)(wf + .5f), 7, 2, c);
+  }
   cv->fillTriangle((int)(x + 23.2f), (int)(y + 4.2f), (int)(x + 23.2f),
                    (int)(y + 7.8f), (int)(x + 25), (int)(y + 6), c);
 }
@@ -418,6 +427,68 @@ void SigUI::saveState() {
   }
 }
 
+/* =================================================================== */
+/* live status: AXP2101 battery % + Wi-Fi RSSI bars (status line).     */
+/* Values are real hardware readings — never literals (old hardcode:   */
+/* "78%" + always-full bars). Refreshed once a second by tickTimers.   */
+/* =================================================================== */
+static XPowersPMU g_pmu;
+
+static int battFromMv(int mv) {
+  static const int16_t mvT[6] = {3300, 3500, 3700, 3850, 4000, 4200};
+  static const int8_t  pcT[6] = {  0,   12,   42,   62,   82,  100};
+  if (mv <= mvT[0]) return 0;
+  if (mv >= mvT[5]) return 100;
+  for (int i = 1; i < 6; i++)
+    if (mv <= mvT[i])
+      return pcT[i - 1] + (int)((long)(mv - mvT[i - 1]) *
+                                (pcT[i] - pcT[i - 1]) / (mvT[i] - mvT[i - 1]));
+  return 100;
+}
+
+bool SigUI::refreshStatus() {
+  if (!pmuInit) {                       // one-shot probe (before touch task)
+    pmuInit = g_pmu.begin(Wire, AXP2101_SLAVE_ADDRESS,
+                          TOUCH_SDA, TOUCH_SCL) ? 1 : 2;
+    if (pmuInit == 1) {                 // vendor adcOn() (Waveshare 01_PMU example):
+      g_pmu.enableTemperatureMeasure();
+      g_pmu.enableBattDetection();
+      g_pmu.enableVbusVoltageMeasure();
+      g_pmu.enableBattVoltageMeasure();
+      g_pmu.enableSystemVoltageMeasure();
+    }
+    Serial.printf("[pmu] AXP2101 %s\n",
+                  pmuInit == 1 ? "online" : "offline - battery unknown");
+  }
+  int8_t pct = -1;
+  if (pmuInit == 1 && g_pmu.isBatteryConnect()) {
+    int p = g_pmu.getBatteryPercent();   // chip-computed % (reg 0xA4)
+    if (p < 0 && g_pmu.getBattVoltage() > 0) p = battFromMv(g_pmu.getBattVoltage());
+    pct = (int8_t)(p > 100 ? 100 : p);
+  }
+  int8_t lvl;
+  if (!wcPowered())        lvl = -1;    // radio off            -> dim icon
+  else if (!wcConnected()) lvl = 0;     // on, waiting for link -> hint bars
+  else {
+    int r = WiFi.RSSI();
+    lvl = r >= -55 ? 3 : r >= -70 ? 2 : 1;
+  }
+  bool chg = (pct != battPct) || (lvl != sigLvl);
+  if (chg) {
+    battPct = pct; sigLvl = lvl;
+    Serial.printf("[batt] %d%% bars %d rssi %d | st1=0x%02X pct=%d "
+                  "v=%d,%d adc=0x%02X det=0x%02X\n",
+                  pct, lvl, wcConnected() ? (int)WiFi.RSSI() : 0,
+                  pmuInit == 1 ? g_pmu.readRegister(XPOWERS_AXP2101_STATUS1) : -1,
+                  pmuInit == 1 ? g_pmu.readRegister(XPOWERS_AXP2101_BAT_PERCENT_DATA) : -1,
+                  pmuInit == 1 ? g_pmu.readRegister(XPOWERS_AXP2101_ADC_DATA_RELUST0) : -1,
+                  pmuInit == 1 ? g_pmu.readRegister(XPOWERS_AXP2101_ADC_DATA_RELUST1) : -1,
+                  pmuInit == 1 ? g_pmu.readRegister(XPOWERS_AXP2101_ADC_CHANNEL_CTRL) : -1,
+                  pmuInit == 1 ? g_pmu.readRegister(XPOWERS_AXP2101_BAT_DET_CTRL) : -1);
+  }
+  return chg;
+}
+
 void SigUI::begin(DisplayUI* d, StreamPlayer* p, StationManager* s) {
   disp = d; pl = p; sm = s;
   g = disp->getGfx();
@@ -466,6 +537,7 @@ void SigUI::begin(DisplayUI* d, StreamPlayer* p, StationManager* s) {
   bootT0 = millis();
   view = V_BOOT;
   dirty = true;
+  refreshStatus();                 // battery + signal before first paint
   Serial.printf("[ui] begin done\n"); Serial.flush();
   touch.startTask();
   Serial.printf("[ui] touch task started\n"); Serial.flush();
@@ -575,6 +647,7 @@ void SigUI::tickTimers() {
   static uint32_t lastClock = 0;
   if (now - lastClock >= 1000) {
     lastClock = now;
+    refreshStatus();               // battery % + RSSI bars (real readings)
     if (view == V_NOW || view == V_STANDBY) dirty = true;
   }
 }
@@ -667,10 +740,10 @@ void SigUI::console() {
         Serial.printf("[P] pong\n");
         Serial.printf(
             "[state] view=%u cur=%d (%s) vol=%u bright=%.2f play=%d "
-            "conn=%d ovl=%u wifi=%d/%d ssid=%s heap=%u\n",
+            "conn=%d ovl=%u wifi=%d/%d batt=%d%% bars=%d pmu=%u ssid=%s heap=%u\n",
             view, cur, SD[cur].code, vol, bright, playing, connecting, ovl,
-            wcPowered(), wcConnected(), wcSsid().c_str(),
-            (unsigned)ESP.getFreeHeap());
+            wcPowered(), wcConnected(), battPct, sigLvl, pmuInit,
+            wcSsid().c_str(), (unsigned)ESP.getFreeHeap());
         break;
       default:
         break;   // ignore (line noise / newlines)

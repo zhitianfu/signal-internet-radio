@@ -29,6 +29,12 @@ signal-internet-radio/
 
 ## 1. The product
 
+The status line on the now-playing screen shows **real hardware values**: battery
+percentage from the on-board AXP2101 PMIC (XPowersLib, chip-computed %) and Wi-Fi
+signal bars from `WiFi.RSSI()` (3 bars >= -55 dBm, 2 >= -70, else 1; dimmed while
+the radio is off). With no battery connected to the PMIC the display honestly reads
+`--%`.
+
 **Screens** (all inside the 466×466 safe circle):
 
 - **Now playing** — the "watchface": station ring dial with 9 labelled ticks
@@ -106,7 +112,8 @@ arduino-cli core install esp32:esp32
 # libraries (exact versions this project was built against)
 arduino-cli lib install "ESP32-audioI2S@4.0.0" \
                         "GFX Library for Arduino@1.6.7" \
-                        "ArduinoJson@7.4.3"
+                        "ArduinoJson@7.4.3" \
+                        "XPowersLib@0.3.3"
 ```
 
 ### 3.2 Build
