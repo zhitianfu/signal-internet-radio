@@ -20,7 +20,7 @@ static std::vector<WcNet> _results;
 static bool        _scanReady = false;
 static WcState     _st = WC_IDLE;
 static String      _joinSsid, _joinPass;
-static uint32_t    _joinT0 = 0, _scanT0 = 0;
+static uint32_t    _joinT0 = 0, _scanT0 = 0, _failT0 = 0;
 static bool        _joinOk = false, _joinFail = false;
 static bool        _wantScan = false;
 
@@ -296,6 +296,7 @@ void wcLoop() {
     } else if (s == WL_CONNECT_FAILED || s == WL_NO_SSID_AVAIL ||
                millis() - _joinT0 > 15000) {
       _st = WC_FAILED;
+      _failT0 = millis();
       _joinFail = true;
       LOG_E("wifi", "join failed: %s", _joinSsid.c_str());
     }
@@ -303,6 +304,22 @@ void wcLoop() {
     if (WiFi.status() != WL_CONNECTED) {
       _st = WC_IDLE;
       LOG_W("wifi", "link lost");
+      if (_joinSsid.length()) {          // come back by ourselves
+        LOG_W("wifi", "rejoining %s", _joinSsid.c_str());
+        wcJoinAsync(_joinSsid, wcPassFor(_joinSsid));
+      }
+    }
+  } else if (_st == WC_FAILED) {
+    /* Auto-retry a FAILED join for STORED networks every 5 s. A boot-time
+     * join that fails (AP/DHCP hiccup) previously left Wi-Fi dead forever
+     * (WC_FAILED is terminal) — wifi=1/0 + STREAM UNAVAILABLE until the user
+     * toggled power. Never-saved nets (wrong password tap) keep the old
+     * wait-for-user behaviour. Skip while a user scan is in flight. */
+    bool scanning = _wantScan || WiFi.scanComplete() == WIFI_SCAN_RUNNING;
+    if (!scanning && wcHasSaved(_joinSsid) && millis() - _failT0 >= 5000) {
+      _failT0 = millis();
+      LOG_W("wifi", "auto-retry join: %s", _joinSsid.c_str());
+      wcJoinAsync(_joinSsid, wcPassFor(_joinSsid));
     }
   }
 }

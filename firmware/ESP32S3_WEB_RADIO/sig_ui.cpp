@@ -755,6 +755,9 @@ void SigUI::dumpFrame() {
   if (!cv) { Serial.println("[dump] no framebuffer"); return; }
   uint16_t* fb = cv->getFramebuffer();
   if (!fb) { Serial.println("[dump] null framebuffer"); return; }
+  /* bulk dump: briefly allow blocking TX (host is reading) — with the
+   * console's normal setTxTimeoutMs(0) the USBCDC would drop most bytes */
+  Serial.setTxTimeoutMs(5000);
   Serial.printf("P6\n466 466\n255\n");
   static uint8_t row[466 * 3];
   for (int y = 0; y < 466; y++) {
@@ -767,6 +770,7 @@ void SigUI::dumpFrame() {
     Serial.write(row, sizeof(row));
   }
   Serial.printf("\n[dump] frame flushed\n");
+  Serial.setTxTimeoutMs(0);      // back to non-blocking console
 }
 
 /* =================================================================== */
