@@ -28,7 +28,10 @@ enum { W_NONE, W_BACK, W_RESCAN, W_WROW, W_WON };
 void SigUI::setView(uint8_t v) {
   if (v > V_WIFI) return;
   view = v;
-  if (v == V_STATIONS) listY = 0;
+  /* listY is shared by the stations and settings lists — entering either
+   * view starts at the top (a scrolled stations list used to push every
+   * settings row off-screen: empty SETTINGS body, unreachable Wi-Fi row) */
+  if (v == V_STATIONS || v == V_SETTINGS) listY = 0;
   if (v == V_WIFI) enterWifi();
   if (v != V_NOW) hideVol();
   dragMode = DRAG_NONE;
