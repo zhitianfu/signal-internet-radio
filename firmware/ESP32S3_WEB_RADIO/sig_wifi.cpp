@@ -117,6 +117,22 @@ void SigUI::paintWifiView() {
     /* network list */
     auto& nets = wcResults();
     int n = (int)nets.size();
+    if (n == 0) {
+      /* An empty scan must not read as a blank page: say it, and point at
+       * the rescan icon (hit zone 318,70,44,44 in sig_flow.cpp). */
+      icWifiOff(233, 216.0f, C_OFFIC);
+      char t[24], tu[32];
+      up2(t, "No networks found", sizeof(t));
+      float l2 = 11 * 0.3f;
+      float wt = tWidth(F_MONO_400_11, t, l2);
+      tDraw(F_MONO_400_11, t, 233 - wt / 2 + l2 / 2, wt, 262.0f, C_SUB, 0,
+            l2, 0, 1);
+      up2(tu, "Tap rescan to retry", sizeof(tu));
+      float lu = 9.5f * 0.1f;
+      float wu = tWidth(F_MONO_400_9_5, tu, lu);
+      tDraw(F_MONO_400_9_5, tu, 233 - wu / 2 + lu / 2, wu, 288.0f, C_SUB, 0,
+            lu, 0, 1);
+    }
     float contentH = n ? n * 56.0f + (n - 1) * 12.0f : 0;
     String curSsid = wcSsid();
     for (int i = 0; i < n; i++) {
