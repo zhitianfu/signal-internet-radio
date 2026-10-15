@@ -270,7 +270,7 @@ void SigUI::paintPass() {
   } else if (passEap) {
     const char* h = "802.1X \xc2\xb7 type USER:PASSWORD";
     float wh = tWidth(F_MONO_400_10, h, 0);
-    tDraw(F_MONO_400_10, h, 233 - wh / 2, wh, 204, C(C_SUB), 0, 0, 0, 1);
+    tDraw(F_MONO_400_10, h, 233 - wh / 2, wh, 204, C_SUB, 0, 0, 0, 1);
   }
 
   /* keyboard */
