@@ -117,6 +117,22 @@ void SigUI::paintWifiView() {
     /* network list */
     auto& nets = wcResults();
     int n = (int)nets.size();
+    if (n == 0) {
+      /* An empty scan must not read as a blank page: say it, and point at
+       * the rescan icon (hit zone 318,70,44,44 in sig_flow.cpp). */
+      icWifiOff(233, 216.0f, C_OFFIC);
+      char t[24], tu[32];
+      up2(t, "No networks found", sizeof(t));
+      float l2 = 11 * 0.3f;
+      float wt = tWidth(F_MONO_400_11, t, l2);
+      tDraw(F_MONO_400_11, t, 233 - wt / 2 + l2 / 2, wt, 262.0f, C_SUB, 0,
+            l2, 0, 1);
+      up2(tu, "Tap rescan to retry", sizeof(tu));
+      float lu = 9.5f * 0.1f;
+      float wu = tWidth(F_MONO_400_9_5, tu, lu);
+      tDraw(F_MONO_400_9_5, tu, 233 - wu / 2 + lu / 2, wu, 288.0f, C_SUB, 0,
+            lu, 0, 1);
+    }
     float contentH = n ? n * 56.0f + (n - 1) * 12.0f : 0;
     String curSsid = wcSsid();
     for (int i = 0; i < n; i++) {
@@ -165,7 +181,7 @@ void SigUI::paintWifiView() {
       char sub[48], su[48];
       if (nw.five) snprintf(sub, sizeof(sub), "5 GHz \xc2\xb7 unsupported");
       else snprintf(sub, sizeof(sub), "%s \xc2\xb7 2.4 GHz",
-                    nw.open ? "Open" : "WPA2");
+                    nw.open ? "Open" : (nw.eap ? "802.1X" : "WPA2"));
       up2(su, sub, sizeof(su));
       float nmLine2 = font(F_DISP_600_15_5)->ascent + font(F_DISP_600_15_5)->descent +
                       font(F_DISP_600_15_5)->gap;
@@ -245,11 +261,16 @@ void SigUI::paintPass() {
   /* eye: slashed+gray while hidden, open+accent while revealed */
   icEye(366, 171, passShow ? C_ACCENT : C_INK2, !passShow);
 
-  /* error */
+  /* error, or the 802.1X hint when the field wants USER:PASSWORD */
   if (passErr) {
-    const char* e = "Password must be at least 8 characters";
+    const char* e = passEap ? "Enterprise: type USER:PASSWORD"
+                            : "Password must be at least 8 characters";
     float wv = tWidth(F_MONO_400_10, e, 0);
     tDraw(F_MONO_400_10, e, 233 - wv / 2, wv, 204, C_LIVE, 0, 0, 0, 1);
+  } else if (passEap) {
+    const char* h = "802.1X \xc2\xb7 type USER:PASSWORD";
+    float wh = tWidth(F_MONO_400_10, h, 0);
+    tDraw(F_MONO_400_10, h, 233 - wh / 2, wh, 204, C_SUB, 0, 0, 0, 1);
   }
 
   /* keyboard */

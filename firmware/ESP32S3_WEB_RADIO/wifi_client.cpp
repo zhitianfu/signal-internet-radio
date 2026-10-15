@@ -72,7 +72,7 @@ void wcBegin() {
         if (d[s].is<const char*>()) { pass = d[s].as<const char*>(); any = true; }
       }
       (void)any;
-      wcJoinAsync(s, pass);
+      wcJoinSaved(s);   /* quiet: picks the 802.1X path for "@eap:" creds */
     }
   }
 }
@@ -113,11 +113,38 @@ const char* wcStateText() {
 
 /* ---- scan ------------------------------------------------------------ */
 void wcScanAsync() {
-  if (!_pow || _st == WC_CONNECTING) return;
+  if (!_pow) return;
+  /* A previous scan that never reported completion keeps the driver's SCANNING
+   * bit set, and the guard below would then refuse every later request - which
+   * is what "the rescan icon does nothing" looks like. Clear it first. */
+  if (_wantScan && millis() - _scanT0 > 8000) {
+    LOG_W("wifi", "previous scan never finished - clearing it");
+    WiFi.scanDelete();
+    _wantScan = false;
+  }
   if (WiFi.scanComplete() == WIFI_SCAN_RUNNING) return;
+  /* Scan request while a join attempt runs: stop the attempt, then scan.
+   * The old early return left the Wi-Fi page with an EMPTY list (and a
+   * "Scanning" spinner that never resolved) whenever the board retried a
+   * stored network - the normal state at a new place, and the reason the
+   * owner's iPhone hotspot was never listed. WC_FAILED re-arms the
+   * stored-network join after the scan (see wcLoop). */
+  if (_st == WC_CONNECTING) {
+    WiFi.disconnect();
+    _st = WC_FAILED;
+    _failT0 = millis();
+    LOG_W("wifi", "scan cancels join attempt: %s", _joinSsid.c_str());
+    /* Let the driver finish the teardown before the scan: a scan started
+     * inside a connect attempt gets aborted part-way and then reports only
+     * the strongest AP or nothing at all. */
+    delay(250);
+  }
   _scanReady = false;
-  WiFi.scanNetworks(true /* async */, false /* hidden */, false /* passive */,
-                    300 /* ms per channel */);
+  /* show_hidden = true: an iPhone personal hotspot can advertise a hidden
+   * SSID until a device joins it, and a hidden-filtered scan never lists it. */
+  int16_t rc = WiFi.scanNetworks(true /* async */, true /* hidden */,
+                                 false /* passive */, 300 /* ms per channel */);
+  LOG_I("wifi", "scan start rc=%d st=%d", (int)rc, (int)_st);
   _scanT0 = millis();
   _wantScan = true;
 }
@@ -152,6 +179,7 @@ static void collectScan() {
     w.lvl = r > -55 ? 3 : (r > -67 ? 2 : 1);
     wifi_auth_mode_t e = WiFi.encryptionType(i);
     w.open = (e == WIFI_AUTH_OPEN);
+    w.eap = (e == WIFI_AUTH_WPA2_ENTERPRISE);   // 802.1X: user name + password
     w.five = (WiFi.channel(i) >= 14);
     w.hot = isHotspotName(s);
     w.saved = wcHasSaved(s) || s == cur;
@@ -172,6 +200,14 @@ static void collectScan() {
   _scanReady = true;
   _wantScan = false;
   LOG_I("wifi", "scan: %d nets", (int)_results.size());
+  /* Per-network line with the RSSI: this is the only way to compare the
+   * board's radio against a phone in the same spot (an empty or 1-entry
+   * list cannot be told apart from a scan that was cut short). */
+  for (size_t i = 0; i < _results.size() && i < 8; i++) {
+    LOG_I("wifi", "  net%u %.20s rssi=%d %s", (unsigned)i,
+          _results[i].ssid.c_str(), (int)_results[i].rssi,
+          _results[i].five ? "5G" : "2.4G");
+  }
 }
 
 /* ---- join ------------------------------------------------------------ */
@@ -186,8 +222,52 @@ void wcJoinAsync(const String& ssid, const String& pass) {
   LOG_I("wifi", "joining %s", ssid.c_str());
 }
 
+/* ---- 802.1X (enterprise) -----------------------------------------------
+ * Credential form: "@eap:USER:PASSWORD" in the same store as WPA2 keys. */
+#define EAP_PREFIX "@eap:"
+
+bool wcEnterpriseSupported() {
+#ifdef CONFIG_ESP_WIFI_ENTERPRISE_SUPPORT
+  return true;
+#else
+  return false;
+#endif
+}
+
+/* Split "@eap:user:pass" — false for a plain WPA2 passphrase. */
+static bool splitEapCreds(const String& stored, String& user, String& pass) {
+  if (!stored.startsWith(EAP_PREFIX)) return false;
+  String rest = stored.substring(strlen(EAP_PREFIX));
+  int c = rest.indexOf(':');
+  if (c <= 0) return false;
+  user = rest.substring(0, c);
+  pass = rest.substring(c + 1);
+  return user.length() > 0 && pass.length() > 0;
+}
+
+void wcJoinEnterpriseAsync(const String& ssid, const String& user, const String& pass) {
+  if (!_pow) return;
+  _joinSsid = ssid;
+  _joinPass = String(EAP_PREFIX) + user + ":" + pass;   // stored as typed
+  _joinT0 = millis();
+  _st = WC_CONNECTING;
+  _joinOk = _joinFail = false;
+  WiFi.disconnect();
+#ifdef CONFIG_ESP_WIFI_ENTERPRISE_SUPPORT
+  /* PEAP/MSCHAPv2: identity = user name, no certificate to pin. */
+  WiFi.begin(ssid.c_str(), WPA2_AUTH_PEAP, user.c_str(), user.c_str(), pass.c_str());
+  LOG_I("wifi", "joining %s (enterprise PEAP as %s)", ssid.c_str(), user.c_str());
+#else
+  LOG_W("wifi", "no 802.1X in this build; cannot join %s", ssid.c_str());
+  _st = WC_FAILED;
+  _joinFail = true;
+#endif
+}
+
 void wcJoinSaved(const String& ssid) {
-  wcJoinAsync(ssid, wcPassFor(ssid));
+  String stored = wcPassFor(ssid), user, pass;
+  if (splitEapCreds(stored, user, pass)) wcJoinEnterpriseAsync(ssid, user, pass);
+  else wcJoinAsync(ssid, stored);
 }
 
 static void storeCred(const String& ssid, const String& pass) {
@@ -280,9 +360,33 @@ void wcClearJoins() { _joinOk = _joinFail = false; }
 void wcLoop() {
   if (!_pow) return;
 
-  if (_wantScan || WiFi.scanComplete() == WIFI_SCAN_RUNNING ||
-      _st == WC_CONNECTING) {
-    if (WiFi.scanComplete() >= 0) collectScan();
+  if (_wantScan) {
+    static bool scanRetried = false;   /* one automatic retry per request */
+    int16_t sc = WiFi.scanComplete();
+    if (sc >= 0) {
+      scanRetried = false;
+      collectScan();
+    } else if (sc == WIFI_SCAN_FAILED || millis() - _scanT0 > 15000) {
+      /* A scan can be refused or dropped mid-way (a driver transition, or a
+       * join attempt on the same radio). Retry ONCE, then tell the page to
+       * stop spinning and record what happened. */
+      WiFi.scanDelete();
+      if (!scanRetried) {
+        scanRetried = true;
+        LOG_E("wifi", "scan did not complete rc=%d after %u ms - retrying",
+              (int)sc, (unsigned)(millis() - _scanT0));
+        _scanReady = false;
+        _wantScan = true;
+        _scanT0 = millis();
+        WiFi.scanNetworks(true /* async */, true /* hidden */,
+                          false /* passive */, 300 /* ms per channel */);
+      } else {
+        scanRetried = false;
+        LOG_E("wifi", "scan failed twice rc=%d - showing what we have", (int)sc);
+        _wantScan = false;
+        _scanReady = true;
+      }
+    }
   }
 
   if (_st == WC_CONNECTING) {
@@ -306,7 +410,7 @@ void wcLoop() {
       LOG_W("wifi", "link lost");
       if (_joinSsid.length()) {          // come back by ourselves
         LOG_W("wifi", "rejoining %s", _joinSsid.c_str());
-        wcJoinAsync(_joinSsid, wcPassFor(_joinSsid));
+        wcJoinSaved(_joinSsid);
       }
     }
   } else if (_st == WC_FAILED) {

@@ -109,6 +109,8 @@ private:
   void enterWifi(); void doScan();
   void handleNet(int idx);
   void wifiJoin(const String& ssid, const String& pass);
+  void wifiJoinSaved(const String& ssid);   // honours "@eap:" credentials
+  void wifiJoinEnterprise(const String& ssid, const String& user, const String& pass);
   void openPass(int idx); void closePass();
   void keyPress(const char* k);
   void tryJoin();
@@ -235,6 +237,7 @@ private:
 
   /* pass keyboard */
   int passIdx = -1; String passSsid; bool passOpen = false;
+  bool passEap = false;                       // 802.1X: the field holds USER:PASSWORD
   String passVal; bool kbCaps = false, kbNum = false, passErr = false;
   bool passShow = false, passPeek = false;   // eye toggle / press-hold peek
   /* netcard */
