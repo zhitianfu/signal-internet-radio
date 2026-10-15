@@ -45,7 +45,8 @@ std::vector<WcNet>& wcResults();           // last scan results (UI-sorted)
 void        wcJoinAsync(const String& ssid, const String& pass); // no save yet
 void        wcJoinSaved(const String& ssid);                     // from store
 
-/* 802.1X (enterprise), for corporate SSIDs such as corporate 802.1X.
+/* 802.1X (enterprise), for corporate SSIDs that ask for a user name as well
+ * as a password.
  * The keyboard has a single field, so an enterprise login is typed as
  * USER:PASSWORD and kept in the store as "@eap:USER:PASSWORD" — a WPA2
  * passphrase never starts with "@eap:", so the two forms cannot be confused.
