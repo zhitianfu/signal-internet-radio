@@ -72,7 +72,7 @@ void wcBegin() {
         if (d[s].is<const char*>()) { pass = d[s].as<const char*>(); any = true; }
       }
       (void)any;
-      wcJoinAsync(s, pass);
+      wcJoinSaved(s);   /* quiet: picks the 802.1X path for "@eap:" creds */
     }
   }
 }
@@ -179,6 +179,7 @@ static void collectScan() {
     w.lvl = r > -55 ? 3 : (r > -67 ? 2 : 1);
     wifi_auth_mode_t e = WiFi.encryptionType(i);
     w.open = (e == WIFI_AUTH_OPEN);
+    w.eap = (e == WIFI_AUTH_WPA2_ENTERPRISE);   // 802.1X: user name + password
     w.five = (WiFi.channel(i) >= 14);
     w.hot = isHotspotName(s);
     w.saved = wcHasSaved(s) || s == cur;
@@ -221,8 +222,52 @@ void wcJoinAsync(const String& ssid, const String& pass) {
   LOG_I("wifi", "joining %s", ssid.c_str());
 }
 
+/* ---- 802.1X (enterprise) -----------------------------------------------
+ * Credential form: "@eap:USER:PASSWORD" in the same store as WPA2 keys. */
+#define EAP_PREFIX "@eap:"
+
+bool wcEnterpriseSupported() {
+#ifdef CONFIG_ESP_WIFI_ENTERPRISE_SUPPORT
+  return true;
+#else
+  return false;
+#endif
+}
+
+/* Split "@eap:user:pass" — false for a plain WPA2 passphrase. */
+static bool splitEapCreds(const String& stored, String& user, String& pass) {
+  if (!stored.startsWith(EAP_PREFIX)) return false;
+  String rest = stored.substring(strlen(EAP_PREFIX));
+  int c = rest.indexOf(':');
+  if (c <= 0) return false;
+  user = rest.substring(0, c);
+  pass = rest.substring(c + 1);
+  return user.length() > 0 && pass.length() > 0;
+}
+
+void wcJoinEnterpriseAsync(const String& ssid, const String& user, const String& pass) {
+  if (!_pow) return;
+  _joinSsid = ssid;
+  _joinPass = String(EAP_PREFIX) + user + ":" + pass;   // stored as typed
+  _joinT0 = millis();
+  _st = WC_CONNECTING;
+  _joinOk = _joinFail = false;
+  WiFi.disconnect();
+#ifdef CONFIG_ESP_WIFI_ENTERPRISE_SUPPORT
+  /* PEAP/MSCHAPv2: identity = user name, no certificate to pin. */
+  WiFi.begin(ssid.c_str(), WPA2_AUTH_PEAP, user.c_str(), user.c_str(), pass.c_str());
+  LOG_I("wifi", "joining %s (enterprise PEAP as %s)", ssid.c_str(), user.c_str());
+#else
+  LOG_W("wifi", "no 802.1X in this build; cannot join %s", ssid.c_str());
+  _st = WC_FAILED;
+  _joinFail = true;
+#endif
+}
+
 void wcJoinSaved(const String& ssid) {
-  wcJoinAsync(ssid, wcPassFor(ssid));
+  String stored = wcPassFor(ssid), user, pass;
+  if (splitEapCreds(stored, user, pass)) wcJoinEnterpriseAsync(ssid, user, pass);
+  else wcJoinAsync(ssid, stored);
 }
 
 static void storeCred(const String& ssid, const String& pass) {
@@ -365,7 +410,7 @@ void wcLoop() {
       LOG_W("wifi", "link lost");
       if (_joinSsid.length()) {          // come back by ourselves
         LOG_W("wifi", "rejoining %s", _joinSsid.c_str());
-        wcJoinAsync(_joinSsid, wcPassFor(_joinSsid));
+        wcJoinSaved(_joinSsid);
       }
     }
   } else if (_st == WC_FAILED) {

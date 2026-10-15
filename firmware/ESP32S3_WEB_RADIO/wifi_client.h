@@ -21,6 +21,7 @@ struct WcNet {
   bool five = false;   // 5 GHz — unsupported (ESP32-S3 is 2.4 only)
   bool hot = false;    // phone-hotspot heuristic (matches prototype tags)
   bool saved = false;  // has stored credentials
+  bool eap = false;    // 802.1X enterprise: needs a user name as well as a password
 };
 
 enum WcState : uint8_t {
@@ -43,6 +44,14 @@ std::vector<WcNet>& wcResults();           // last scan results (UI-sorted)
 
 void        wcJoinAsync(const String& ssid, const String& pass); // no save yet
 void        wcJoinSaved(const String& ssid);                     // from store
+
+/* 802.1X (enterprise), for corporate SSIDs such as corporate 802.1X.
+ * The keyboard has a single field, so an enterprise login is typed as
+ * USER:PASSWORD and kept in the store as "@eap:USER:PASSWORD" — a WPA2
+ * passphrase never starts with "@eap:", so the two forms cannot be confused.
+ * PEAP with MSCHAPv2, identity = user name, no CA certificate pinned. */
+void        wcJoinEnterpriseAsync(const String& ssid, const String& user, const String& pass);
+bool        wcEnterpriseSupported();   // true when this build has 802.1X
 void        wcDisconnect();                // drop link, keep credentials
 void        wcForget(const String& ssid);  // erase credentials (+ link)
 

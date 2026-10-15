@@ -134,7 +134,7 @@ void SigUI::handleNet(int idx) {
   WcNet n = nets[idx];
   if (n.five) { toast("ESP32-S3 supports 2.4 GHz only"); return; }
   if (wcConnected() && n.ssid == wcSsid()) { openNet(idx); return; }
-  if (wcHasSaved(n.ssid)) { wifiJoin(n.ssid, wcPassFor(n.ssid)); return; }
+  if (wcHasSaved(n.ssid)) { wifiJoinSaved(n.ssid); return; }
   if (n.open) { wifiJoin(n.ssid, ""); return; }
   openPass(idx);
 }
@@ -149,12 +149,33 @@ void SigUI::wifiJoin(const String& ssid, const String& pass) {
   dirty = true;
 }
 
+void SigUI::wifiJoinSaved(const String& ssid) {
+  passSsid = ssid;
+  conForWifi = true;
+  conT0 = millis();
+  connecting = true;
+  ovl = O_CON;
+  wcJoinSaved(ssid);     /* picks 802.1X automatically for "@eap:" creds */
+  dirty = true;
+}
+
+void SigUI::wifiJoinEnterprise(const String& ssid, const String& user, const String& pass) {
+  passSsid = ssid;
+  conForWifi = true;
+  conT0 = millis();
+  connecting = true;
+  ovl = O_CON;
+  wcJoinEnterpriseAsync(ssid, user, pass);
+  dirty = true;
+}
+
 void SigUI::openPass(int idx) {
   auto& nets = wcResults();
   if (idx < 0 || idx >= (int)nets.size()) return;
   passIdx = idx;
   passSsid = nets[idx].ssid;
   passOpen = nets[idx].open;
+  passEap = nets[idx].eap;
   passVal = "";
   kbCaps = false;
   kbNum = false;
@@ -191,8 +212,18 @@ void SigUI::keyPress(const char* k) {
 void SigUI::tryJoin() {
   String t = passVal;
   t.trim();
+  String ssid = passSsid;
+  if (passEap) {
+    /* Single field, so an enterprise login arrives as USER:PASSWORD. */
+    int c = t.indexOf(':');
+    if (c <= 0 || c >= (int)t.length() - 1) { passErr = true; dirty = true; return; }
+    String user = t.substring(0, c), pass = t.substring(c + 1);
+    closePass();
+    wifiJoinEnterprise(ssid, user, pass);
+    return;
+  }
   if (t.length() < 8) { passErr = true; dirty = true; return; }
-  String ssid = passSsid, pass = passVal;
+  String pass = passVal;
   closePass();
   wifiJoin(ssid, pass);
 }
