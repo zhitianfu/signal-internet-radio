@@ -2,7 +2,7 @@ name: build-signal
 
 on:
   push:
-    branches: [wifi-scan-fix-2026-10-15]
+    branches: [main, wifi-scan-fix-2026-10-15]
   workflow_dispatch:
 
 jobs:
