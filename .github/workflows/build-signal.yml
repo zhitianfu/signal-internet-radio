@@ -13,7 +13,10 @@ jobs:
 
       - name: install arduino-cli
         run: |
-          curl -fsSL https://raw.githubusercontent.com/arduino/arduino-cli/master/install.sh | sh -s -- -b "$HOME/.local/bin"
+          curl -fsSL -o /tmp/acli.tar.gz https://github.com/arduino/arduino-cli/releases/download/v1.1.1/arduino-cli_1.1.1_Linux_64bit.tar.gz
+          mkdir -p "$HOME/.local/bin"
+          tar -xzf /tmp/acli.tar.gz -C "$HOME/.local/bin" arduino-cli
+          "$HOME/.local/bin/arduino-cli" version
           echo "$HOME/.local/bin" >> "$GITHUB_PATH"
 
       - name: esp32 core and libraries (pinned)
