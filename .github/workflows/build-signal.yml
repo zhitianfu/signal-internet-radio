@@ -1,0 +1,41 @@
+name: build-signal
+
+on:
+  push:
+    branches: [wifi-scan-fix-2026-10-15]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: install arduino-cli
+        run: |
+          curl -fsSL https://raw.githubusercontent.com/arduino/arduino-cli/master/install.sh | sh -s -- -b "$HOME/.local/bin"
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+
+      - name: esp32 core and libraries (pinned)
+        run: |
+          arduino-cli config init --overwrite >/dev/null
+          arduino-cli config add board_manager.additional_urls https://espressif.github.io/arduino-esp32/package_esp32_index.json
+          arduino-cli core update-index
+          arduino-cli core install esp32:esp32
+          arduino-cli lib install "ESP32-audioI2S@4.0.0" "GFX Library for Arduino@1.6.7" "ArduinoJson@7.4.3" "XPowersLib@0.3.3"
+          arduino-cli core list
+          arduino-cli lib list
+
+      - name: compile the SIGNAL sketch
+        run: |
+          FQBN='esp32:esp32:esp32s3:PSRAM=opi,FlashSize=32M,PartitionScheme=huge_app,UploadSpeed=921600,USBMode=default,CDCOnBoot=cdc'
+          arduino-cli compile --fqbn "$FQBN" --output-dir out firmware/ESP32S3_WEB_RADIO
+          ls -l out
+          sha256sum out/ESP32S3_WEB_RADIO.ino.bin
+
+      - name: upload the image
+        uses: actions/upload-artifact@v4
+        with:
+          name: signal-v3-bin
+          path: out/ESP32S3_WEB_RADIO.ino.bin
+          if-no-files-found: error
